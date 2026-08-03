@@ -21,7 +21,7 @@ export function MobileMenu({ items }: { items: readonly NavItem[] }) {
             {item.label}
           </Link>
         ))}
-        <Button href="#start" onClick={closeMenu} className="mt-2 w-full">Start a Print</Button>
+        <Button href="/order/start" onClick={closeMenu} className="mt-2 w-full">Start a Print</Button>
       </nav>
     </details>
   );

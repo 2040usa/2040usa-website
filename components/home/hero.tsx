@@ -14,7 +14,7 @@ export function Hero() {
           </h1>
           <p className="mt-7 max-w-lg text-base leading-7 text-text-muted">See the available starting routes, understand the production path, and prepare a transfer request for Downtown Los Angeles pickup.</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Button href="#start" showArrow>Start a Print</Button>
+            <Button href="/order/start" showArrow>Start a Print</Button>
             <Button href="#process" variant="secondary">See How It Works</Button>
           </div>
           <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 font-mono text-[0.62rem] uppercase tracking-[0.14em] text-text-muted">

@@ -50,3 +50,9 @@ Keep this layer small. Add a primitive only after a repeated interface need is d
 - Motion is limited to once-only section reveals and disabled when reduced motion is requested.
 - Complex grids stack at narrow widths; the dashboard table scrolls inside its own contained demo rather than expanding the page.
 - Placeholder visuals are CSS and SVG-like interface geometry, not remote photography.
+
+## Order experience
+
+The `/order` experience uses the same tokens and typography with a calmer, task-focused density. A persistent shell provides compact branding, an explicit prototype disclosure, semantic progress, route focus management, and an optional draft rail. Native radios, checkboxes, number inputs, text inputs, textareas, and buttons are preferred over custom controls. Completed, current, and future progress states include text or symbols in addition to color.
+
+Order forms use bordered production panels rather than detached checkout cards. Error messages use the semantic error token, remain connected to their fields, and are summarized after an attempted continuation. No pricing, cart, coupon, payment, or storefront visual language is permitted before those capabilities are authorized.

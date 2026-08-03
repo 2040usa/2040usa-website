@@ -18,7 +18,7 @@ export function OrderExperiencePreview() {
         <div className="p-4 sm:p-5">
           <div className="flex items-center justify-between"><div><p className="font-mono text-[0.58rem] uppercase tracking-widest text-accent">Example artwork 01</p><h3 className="mt-2 font-display text-2xl uppercase text-text-primary">Front graphic</h3></div><FileImage aria-hidden="true" className="text-text-muted" size={29} strokeWidth={1} /></div>
           <div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-control border border-border p-3"><Ruler aria-hidden="true" className="mb-4 text-accent" size={17} /><p className="font-mono text-[0.53rem] uppercase tracking-widest text-text-muted">Example width</p><p className="mt-2 text-base text-text-primary">11.5 in</p></div><div className="rounded-control border border-border p-3"><p className="font-mono text-[0.53rem] uppercase tracking-widest text-text-muted">Example quantity</p><p className="mt-8 text-base text-text-primary">24 pieces</p></div></div>
-          <div className="mt-5 rounded-control border border-dashed border-border px-4 py-3 font-mono text-[0.58rem] uppercase tracking-widest text-text-muted" aria-label="Static preview only">Next-step control intentionally disabled in Increment 0</div>
+          <div className="mt-5 rounded-control border border-dashed border-border px-4 py-3 font-mono text-[0.58rem] uppercase tracking-widest text-text-muted" aria-label="Static preview only">Interactive prototype available from Start a Print</div>
         </div>
       </div>
     </section>

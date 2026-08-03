@@ -11,13 +11,18 @@ import {
   Sparkles,
   Upload,
 } from "lucide-react";
+import { ORDER_ROUTE_OPTIONS } from "@/lib/order-draft/constants";
+import type { OrderRoute } from "@/lib/order-draft/types";
 
-export const workflowOptions = [
-  { title: "Print-ready gang sheet", description: "Your layout is built, sized, and ready for artwork review.", meta: "Fastest route", preview: "gang-sheet", icon: Layers3 },
-  { title: "Separate artwork", description: "Send individual transparent files to organize into a run.", meta: "Flexible setup", preview: "artwork", icon: FileCheck2 },
-  { title: "Transfers by size", description: "Choose dimensions and quantities for each transfer design.", meta: "Simple repeats", preview: "sizes", icon: ScanLine },
-  { title: "Full apparel project", description: "Bring the garments, art, and count to map the project scope.", meta: "End-to-end", preview: "apparel", icon: Shirt },
-] as const;
+const routeIcons = { "gang-sheet": Layers3, "separate-artwork": FileCheck2, "transfers-by-size": ScanLine, "full-apparel": Shirt } satisfies Record<OrderRoute, typeof Layers3>;
+
+export const workflowOptions = ORDER_ROUTE_OPTIONS.map((option) => ({
+  route: option.value,
+  title: option.name,
+  description: option.description,
+  meta: option.shortLabel,
+  icon: routeIcons[option.value],
+}));
 
 export const processSteps = [
   { title: "Upload", detail: "Send your artwork and project notes.", icon: Upload },

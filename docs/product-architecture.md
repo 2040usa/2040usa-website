@@ -1,10 +1,16 @@
 # Product architecture
 
-## Current increment: frontend foundation
+## Current increment: interactive order prototype
 
-Increment 0 is a static Next.js App Router application. Server Components are the default; the only client boundary is the narrowly scoped Motion reveal wrapper. Homepage data lives in a pure configuration module so sequencing and approved labels can be tested without a browser.
+Increment 0 established the static Next.js App Router foundation and approved homepage. Increment 1 adds a client-side order workflow across `/order/start`, `/order/artwork`, `/order/configure`, and `/order/review`.
 
-There are no API routes, server actions, persistence, identity, uploads, payments, analytics, or transactional messages. Customer ordering and production dashboard screens on the homepage are marketing demonstrations only.
+The order layout creates one vanilla Zustand store instance through a React context provider. Because Next.js preserves the shared layout during client navigation, the draft survives route changes and browser Back/Forward within the order experience. A refresh creates a new store and may return a later route to the earliest incomplete step. The store is deliberately not module-global and is not persisted to local storage, cookies, URL payloads, or a server.
+
+Project Details has separate working and completed configuration records. The route-discriminated working record mirrors current form controls—including temporarily incomplete values—so client-side navigation can restore them without claiming the step is complete. The completed record retains the strict `OrderConfiguration` type and is written only after Zod validation succeeds. Navigation guards and Review consult only the completed record. Route changes and Start Over clear both records; a full refresh still clears the entire prototype.
+
+React Hook Form owns active form state and synchronizes its raw working values to the layout store. Route-specific Zod schemas transform numeric control strings and validate the discriminated completed configuration before Review can use it. Navigation guards are client-side because completeness depends on layout-scoped memory. They subscribe only to route, confirmation, artwork acknowledgment, and completed configuration, and redirect only attempts to move beyond the earliest incomplete step.
+
+There are still no API routes, server actions, database writes, identity, uploads, pricing, payments, analytics, or transactional messages. Homepage dashboard panels remain marketing demonstrations.
 
 The project is standalone. It will not reuse another project’s services, data, environment variables, or infrastructure.
 
@@ -27,7 +33,7 @@ The following choices record direction for future, separately approved increment
 ## Intended boundaries
 
 - Marketing surfaces explain capability and route customers into an order experience.
-- Customer workflows collect project requirements without exposing internal production controls.
+- Customer workflows collect prototype project requirements without exposing internal production controls or claiming to create an order.
 - Production workflows use canonical job state and an audit trail rather than presentation-only status.
 - Provider integrations sit behind application-owned adapters so webhook and retry behavior remains testable.
 - Private customer artwork is never served as a public asset.

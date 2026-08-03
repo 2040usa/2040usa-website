@@ -24,7 +24,7 @@ export function SiteHeader() {
             </Link>
           ))}
         </nav>
-        <div className="hidden lg:block"><Button href="#start">Start a Print</Button></div>
+        <div className="hidden lg:block"><Button href="/order/start">Start a Print</Button></div>
         <MobileMenu items={navItems} />
       </div>
     </header>

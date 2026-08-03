@@ -9,6 +9,8 @@
 - Report verification results honestly. Include actual failures and do not imply an unrun check passed.
 - Generated code must remain understandable, intentionally named, and maintainable by a small product team.
 - Backend and commerce integrations are intentionally deferred. Do not add Supabase, Prisma, authentication, storage, Stripe, Resend, PostHog, customer-account, admin, database, or API-route implementation until its increment is approved.
+- Increment 1 is an in-memory customer order prototype only. It must not upload artwork, persist drafts, calculate prices, submit orders, or imply that payment is available.
+- The order draft store must remain scoped to the `/order` layout provider; do not replace it with a module-global or persisted store.
 - Preserve accessibility, mobile behavior, and the industrial 2040 USA visual language when changing frontend work.
 
 <!-- BEGIN:nextjs-agent-rules -->

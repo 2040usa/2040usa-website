@@ -9,7 +9,7 @@ test("desktop homepage exposes the primary print journey", async ({ page }) => {
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator("form, input[type='file'], a[href='#']")).toHaveCount(0);
   await expect(page.getByText("No file chooser in this increment")).toBeVisible();
-  await expect(page.getByText("Next-step control intentionally disabled in Increment 0")).toBeVisible();
+  await expect(page.getByText("Interactive prototype available from Start a Print")).toBeVisible();
   const headingLevels = await page.locator("h1, h2, h3, h4, h5, h6").evaluateAll((headings) => headings.map((heading) => Number(heading.tagName.slice(1))));
   expect(headingLevels.every((level, index) => index === 0 || level <= headingLevels[index - 1] + 1)).toBe(true);
   const hasHorizontalOverflow = await page.evaluate(

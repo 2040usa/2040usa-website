@@ -25,7 +25,10 @@ for (const viewport of viewports) {
     page.on("console", (message) => {
       if (message.type() === "error") consoleErrors.push(message.text());
     });
-    page.on("requestfailed", (request) => failedRequests.push(request.url()));
+    page.on("requestfailed", (request) => {
+      const reason = request.failure()?.errorText;
+      if (reason !== "net::ERR_ABORTED") failedRequests.push(`${reason ?? "unknown error"}: ${request.url()}`);
+    });
     page.on("response", (response) => {
       if (response.status() >= 400) errorResponses.push(`${response.status()} ${response.url()}`);
     });
