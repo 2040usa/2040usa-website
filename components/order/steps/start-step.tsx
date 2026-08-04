@@ -11,6 +11,7 @@ import { ActionButton } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { getPublicEnvironment } from "@/lib/env/public";
 import { inspectBrowserSession } from "@/lib/supabase/session-inspection";
+import { useArtwork } from "@/components/artwork/artwork-provider";
 
 export function StartStep({ initialRoute }: { initialRoute: OrderRoute | null }) {
   const router = useRouter();
@@ -27,6 +28,7 @@ export function StartStep({ initialRoute }: { initialRoute: OrderRoute | null })
   const [status, setStatus] = useState<"idle" | "working" | "error">("idle");
   const [error, setError] = useState("");
   const environment = getPublicEnvironment();
+  const { records: artworkRecords, refresh: refreshArtwork } = useArtwork();
 
   const inspectSession = useCallback(async () => {
     setSessionState("checking");
@@ -52,12 +54,14 @@ export function StartStep({ initialRoute }: { initialRoute: OrderRoute | null })
   const confirmRoute = async () => {
     setAttempted(true);
     if (!pendingRoute || sessionState === "checking" || sessionState === "error" || (sessionState === "absent" && !captchaToken) || status === "working") return;
+    if (selectedRoute && pendingRoute !== selectedRoute && artworkRecords.length > 0 && !window.confirm("Changing the starting point will remove all current draft artwork after cleanup succeeds. Continue?")) return;
     setStatus("working");
     setError("");
     try {
       await bootstrap(pendingRoute, captchaToken);
       router.push("/order/artwork");
     } catch (reason) {
+      await refreshArtwork().catch(() => undefined);
       setStatus("error");
       setError(reason instanceof Error ? reason.message : "The secure draft could not be established.");
       setCaptchaToken("");

@@ -11,6 +11,15 @@ export type ApiErrorCode =
   | "ORIGIN_MISMATCH"
   | "NOT_FOUND"
   | "VERSION_CONFLICT"
+  | "ARTWORK_NOT_READY"
+  | "ARTWORK_QUOTA_EXCEEDED"
+  | "ARTWORK_ROUTE_MISMATCH"
+  | "ARTWORK_RECOVERY_AMBIGUOUS"
+  | "ARTWORK_RECOVERY_EXPIRED"
+  | "ARTWORK_CLEANUP_INCOMPLETE"
+  | "IDEMPOTENCY_CONFLICT"
+  | "UPLOAD_VERIFICATION_FAILED"
+  | "STORAGE_OPERATION_FAILED"
   | "SERVER_ERROR";
 
 const privateHeaders = { "Cache-Control": "private, no-store, max-age=0", Pragma: "no-cache" };

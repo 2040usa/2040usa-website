@@ -20,7 +20,46 @@ model OrderDraft {
   version              Int      @default(1)
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  artworkFiles         ArtworkFile[]
 
+  @@unique([id, ownerUserId], map: "order_drafts_id_owner_user_id_key")
   @@map("order_drafts")
+  @@schema("public")
+}
+
+model ArtworkFile {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  draftId              String   @map("draft_id") @db.Uuid
+  ownerUserId          String   @map("owner_user_id") @db.Uuid
+  route                String
+  purpose              String
+  status               String   @default("pending")
+  originalName         String   @map("original_name") @db.VarChar(255)
+  extension            String
+  mimeType             String   @map("mime_type")
+  declaredSizeBytes    BigInt   @map("declared_size_bytes")
+  clientLastModified   BigInt?  @map("client_last_modified")
+  clientFingerprint    String   @map("client_fingerprint")
+  idempotencyKey       String   @map("idempotency_key") @db.Uuid
+  recoveryOfId         String?  @map("recovery_of_id") @db.Uuid
+  storageBucket        String   @default("customer-artwork") @map("storage_bucket")
+  storagePath          String   @unique(map: "artwork_files_storage_path_key") @map("storage_path")
+  failureCode          String?  @map("failure_code")
+  attemptExpiresAt     DateTime @map("attempt_expires_at") @db.Timestamptz(6)
+  uploadedAt           DateTime? @map("uploaded_at") @db.Timestamptz(6)
+  verifiedSizeBytes    BigInt?  @map("verified_size_bytes")
+  verifiedMimeType     String?  @map("verified_mime_type")
+  version              Int      @default(1)
+  replacementForId     String?  @map("replacement_for_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  draft                OrderDraft @relation(fields: [draftId, ownerUserId], references: [id, ownerUserId], onDelete: Cascade)
+  replacementFor       ArtworkFile? @relation("ArtworkReplacement", fields: [replacementForId], references: [id], onDelete: SetNull)
+  replacements         ArtworkFile[] @relation("ArtworkReplacement")
+
+  @@unique([draftId, idempotencyKey], map: "artwork_files_draft_idempotency_key")
+  @@index([ownerUserId, draftId, createdAt], map: "artwork_files_owner_draft_idx")
+  @@index([ownerUserId, draftId, clientFingerprint, status, attemptExpiresAt], map: "artwork_files_recovery_lookup_idx")
+  @@map("artwork_files")
   @@schema("public")
 }

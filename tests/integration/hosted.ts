@@ -8,6 +8,7 @@ import { createUnauthenticatedClient, runHostedRlsTests, type HostedOwner } from
 
 const environment = getHostedTestEnvironment();
 const { runHostedDatabaseTests } = await import("./hosted-database");
+const { runHostedArtworkTests } = await import("./hosted-artwork");
 const { prisma } = await import("../../lib/database/prisma");
 const pool = new Pool({ connectionString: environment.databaseUrl, max: 2 });
 const testRunId = `increment-2a-${randomUUID()}`;
@@ -32,8 +33,12 @@ const afterCreation = await anonymousCount();
 assert.equal(afterCreation, before + 2, "The orchestrated run must create exactly two anonymous Auth users.");
 
 try {
-  await runHostedRlsTests({ userA, userB, unauthenticated: createUnauthenticatedClient(environment.url, environment.publishableKey) });
-  await runHostedDatabaseTests({ pool, ownerA: userA.userId, ownerB: userB.userId });
+  const artworkOnly = process.argv.includes("--artwork-only");
+  if (!artworkOnly) {
+    await runHostedRlsTests({ userA, userB, unauthenticated: createUnauthenticatedClient(environment.url, environment.publishableKey) });
+    await runHostedDatabaseTests({ pool, ownerA: userA.userId, ownerB: userB.userId });
+  }
+  await runHostedArtworkTests({ pool, userA, userB, unauthenticated: createUnauthenticatedClient(environment.url, environment.publishableKey) });
   const ownedRows = await pool.query<{ count: number }>("select count(*)::integer as count from public.order_drafts where owner_user_id = any($1::uuid[])", [[userA.userId, userB.userId]]);
   assert.equal(ownedRows.rows[0].count, 0, "The orchestrated run cleans only its own public draft rows.");
   const after = await anonymousCount();

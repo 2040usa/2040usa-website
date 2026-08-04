@@ -1,0 +1,275 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes } from "react";
+import Uppy from "@uppy/core";
+import Tus from "@uppy/tus";
+import { UppyContextProvider, useDropzone, useFileInput, useUppyState } from "@uppy/react";
+import { FileUp, Pause, Play, RotateCcw, Trash2, Upload } from "lucide-react";
+import { useArtwork } from "@/components/artwork/artwork-provider";
+import { useOrderDraft } from "@/components/order/order-draft-provider";
+import { ActionButton } from "@/components/ui/button";
+import {
+  ARTWORK_ACCEPT,
+  ARTWORK_TUS_ENDPOINT,
+  MAX_ARTWORK_FILE_BYTES,
+  MAX_ARTWORK_FILES,
+  MAX_SIMULTANEOUS_UPLOADS,
+  TUS_CHUNK_SIZE,
+  formatBytes,
+  purposeForRoute,
+} from "@/lib/artwork/constants";
+import { validateSelectedArtworkFile } from "@/lib/artwork/file-validation";
+import { createArtworkClientFingerprint } from "@/lib/artwork/fingerprint";
+import { createArtworkStagingFileId, createArtworkTransportFileId } from "@/lib/artwork/transport-identity";
+import type { ArtworkUploadReservation } from "@/lib/artwork/types";
+import { getPublicEnvironment } from "@/lib/env/public";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+
+type UploadMeta = Record<string, unknown> & {
+  clientFingerprint?: string;
+  idempotencyKey?: string;
+  artworkId?: string;
+  artworkVersion?: number;
+  recoverArtworkId?: string;
+  cancelled?: boolean;
+  bucketName?: string;
+  objectName?: string;
+  contentType?: string;
+  cacheControl?: string;
+};
+
+function metaFor(file: { meta: object }) { return file.meta as UploadMeta; }
+
+function LocalFilePreview({ file }: { file: File }) {
+  const previewable = /\.(png|jpe?g|webp)$/i.test(file.name);
+  const url = useMemo(() => previewable ? URL.createObjectURL(file) : null, [file, previewable]);
+  const revokeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (revokeTimer.current) clearTimeout(revokeTimer.current);
+    return () => { if (url) revokeTimer.current = setTimeout(() => URL.revokeObjectURL(url), 0); };
+  }, [url]);
+  if (!url) return null;
+  // Local object URLs must be rendered directly and are revoked on cleanup.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={url} alt={`Local preview of ${file.name}; not a print approval`} className="mt-3 h-20 w-20 rounded-control border border-border object-cover" />;
+}
+
+function createArtworkUppy(draftId: string, reportStage: (stage: string) => void) {
+  const publicEnvironment = getPublicEnvironment();
+  const supabase = createSupabaseBrowserClient();
+  return new Uppy({
+    id: `artwork-${draftId}`,
+    autoProceed: false,
+    allowMultipleUploadBatches: true,
+    onBeforeFileAdded: (file) => {
+      const artworkId = metaFor(file).artworkId;
+      return {
+        ...file,
+        id: typeof artworkId === "string"
+          ? createArtworkTransportFileId(artworkId)
+          : createArtworkStagingFileId(crypto.randomUUID()),
+      };
+    },
+    restrictions: { maxFileSize: MAX_ARTWORK_FILE_BYTES, maxNumberOfFiles: MAX_ARTWORK_FILES },
+  }).use(Tus, {
+    endpoint: ARTWORK_TUS_ENDPOINT,
+    uploadDataDuringCreation: true,
+    chunkSize: TUS_CHUNK_SIZE,
+    retryDelays: [0, 3000, 5000, 10000, 20000],
+    removeFingerprintOnSuccess: true,
+    limit: MAX_SIMULTANEOUS_UPLOADS,
+    withCredentials: false,
+    allowedMetaFields: ["bucketName", "objectName", "contentType", "cacheControl", "artworkId"],
+    onBeforeRequest: async (request) => {
+      reportStage("Checking the upload session");
+      const result = await supabase.auth.getSession();
+      if (result.error || !result.data.session?.access_token) throw new Error("The upload session is unavailable. Retry without creating a new identity.");
+      request.setHeader("Authorization", `Bearer ${result.data.session.access_token}`);
+      request.setHeader("apikey", publicEnvironment.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
+      request.setHeader("x-upsert", "false");
+      reportStage("Transferring securely");
+    },
+  });
+}
+
+export function ArtworkUploader({ draftId }: { draftId: string }) {
+  const [uploadStage, setUploadStage] = useState("Idle");
+  const [uppy] = useState(() => createArtworkUppy(draftId, setUploadStage));
+  const destroyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (destroyTimer.current) clearTimeout(destroyTimer.current);
+    return () => { destroyTimer.current = setTimeout(() => uppy.destroy(), 0); };
+  }, [uppy]);
+  return <UppyContextProvider uppy={uppy}><ArtworkUploaderContents uppy={uppy} draftId={draftId} uploadStage={uploadStage} setUploadStage={setUploadStage} /></UppyContextProvider>;
+}
+
+function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage }: { uppy: Uppy; draftId: string; uploadStage: string; setUploadStage: (stage: string) => void }) {
+  const route = useOrderDraft((state) => state.selectedRoute);
+  const { records, readiness, state, error, recoveryTarget, selectRecoveryTarget, reserve, complete, fail, remove } = useArtwork();
+  const files = useUppyState(uppy, (uppyState) => Object.values(uppyState.files));
+  const [selectionError, setSelectionError] = useState("");
+  const [announcement, setAnnouncement] = useState("");
+  const cancelledReservations = useRef(new Set<string>());
+  const transferReplacement = route === "transfers-by-size" ? records.find((record) => record.status === "uploaded") ?? null : null;
+  const input = useFileInput(useMemo(() => ({ accept: ARTWORK_ACCEPT, multiple: route !== "transfers-by-size" }), [route]));
+  const dropzone = useDropzone(useMemo(() => ({ noClick: false }), []));
+
+  useEffect(() => {
+    const onAdded = (file: (typeof files)[number]) => {
+      if (!(file.data instanceof File) || !route) return;
+      if (typeof metaFor(file).artworkId === "string") return;
+      try {
+        const validated = validateSelectedArtworkFile(file.data);
+        uppy.setFileMeta(file.id, { ...file.meta, idempotencyKey: crypto.randomUUID(), contentType: validated.mimeType, recoverArtworkId: recoveryTarget?.id });
+      } catch (cause) { setSelectionError(cause instanceof Error ? cause.message : "This file is not supported."); uppy.removeFile(file.id); return; }
+      setSelectionError("");
+    };
+    const onSuccess = (file: (typeof files)[number] | undefined) => {
+      if (!file) return;
+      const artworkId = metaFor(file).artworkId;
+      if (typeof artworkId === "string") void complete(artworkId).then(() => { setAnnouncement(`${file.name} upload completed.`); setUploadStage("Verified and ready"); }).catch(() => undefined);
+    };
+    const onError = (file: (typeof files)[number] | undefined) => {
+      if (!file) return;
+      if (metaFor(file).cancelled) return;
+      const id = metaFor(file).artworkId;
+      const record = records.find((item) => item.id === id);
+      const version = metaFor(file).artworkVersion;
+      const failure = typeof id === "string" && typeof version === "number" ? fail({ id, version }) : record ? fail(record) : null;
+      if (failure) void failure.then((updated) => { if (updated && uppy.getFile(file.id)) uppy.setFileMeta(file.id, { ...file.meta, artworkVersion: updated.version }); });
+      setAnnouncement(`${file.name} upload failed. Retry is available.`);
+    };
+    const onRestrictionFailed = (_file: (typeof files)[number] | undefined, cause: Error) => {
+      setSelectionError(cause.message.includes("maximum allowed size") ? "Each artwork file must be 50 MiB or smaller." : cause.message);
+    };
+    uppy.on("file-added", onAdded);
+    uppy.on("upload-success", onSuccess);
+    uppy.on("upload-error", onError);
+    uppy.on("restriction-failed", onRestrictionFailed);
+    return () => { uppy.off("file-added", onAdded); uppy.off("upload-success", onSuccess); uppy.off("upload-error", onError); uppy.off("restriction-failed", onRestrictionFailed); };
+  }, [complete, draftId, fail, records, recoveryTarget, route, setUploadStage, uppy]);
+
+  const beginUpload = async () => {
+    if (!route) return;
+    setSelectionError("");
+    try {
+      setUploadStage("Preparing reservation");
+      for (const file of Object.values(uppy.getFiles())) {
+        let currentMeta = metaFor(file);
+        if (currentMeta.artworkId) continue;
+        if (!(file.data instanceof File) || typeof currentMeta.idempotencyKey !== "string") throw new Error("File preparation is still in progress. Retry shortly.");
+        const idempotencyKey = currentMeta.idempotencyKey;
+        const validated = validateSelectedArtworkFile(file.data);
+        if (typeof currentMeta.clientFingerprint !== "string") {
+          const clientFingerprint = await createArtworkClientFingerprint({ draftId, ...validated });
+          uppy.setFileMeta(file.id, { ...file.meta, clientFingerprint });
+          currentMeta = metaFor(uppy.getFile(file.id));
+        }
+        if (typeof currentMeta.clientFingerprint !== "string") throw new Error("The recovery fingerprint could not be prepared.");
+        const clientFingerprint = currentMeta.clientFingerprint;
+        const reservation: ArtworkUploadReservation = await reserve({
+          originalName: validated.originalName,
+          declaredSizeBytes: validated.declaredSizeBytes,
+          extension: validated.extension,
+          mimeType: validated.mimeType,
+          clientLastModified: validated.clientLastModified,
+          clientFingerprint,
+          purpose: purposeForRoute(route),
+          idempotencyKey,
+          recoverArtworkId: typeof currentMeta.recoverArtworkId === "string" ? currentMeta.recoverArtworkId : null,
+          replacementForArtworkId: transferReplacement?.id ?? null,
+        });
+        if (!reservation.upload) {
+          uppy.removeFile(file.id);
+          setAnnouncement(`${file.name} was already present and has been reconciled.`);
+          continue;
+        }
+        if (cancelledReservations.current.has(idempotencyKey) || !uppy.getFile(file.id)) {
+          cancelledReservations.current.delete(idempotencyKey);
+          await remove(reservation.artwork);
+          continue;
+        }
+        const staged = uppy.getFile(file.id);
+        if (!(staged.data instanceof File)) throw new Error("The selected file is no longer available.");
+        uppy.removeFile(file.id);
+        uppy.addFile({
+          source: staged.source,
+          name: staged.name,
+          type: staged.type,
+          data: staged.data,
+          meta: {
+            ...staged.meta,
+            ...reservation.upload,
+            artworkVersion: reservation.artwork.version,
+          },
+        });
+      }
+      if (uppy.getFiles().length === 0) { setUploadStage("Canceled"); return; }
+      setUploadStage("Starting resumable transfer");
+      const result = await uppy.upload();
+      const failed = result?.failed ?? [];
+      if (failed.length) {
+        const failure = failed[0]?.error;
+        const message = typeof failure === "string" ? failure : "The resumable transfer failed.";
+        throw new Error(message);
+      }
+      if (!(result?.successful ?? []).length) throw new Error("The resumable transfer did not start. Retry the selected file.");
+      setUploadStage("Transfer finished; verifying Storage");
+    } catch (cause) {
+      setSelectionError(cause instanceof Error ? cause.message : "The upload could not begin.");
+    }
+  };
+
+  const cancelFile = async (fileId: string) => {
+    const file = uppy.getFile(fileId);
+    const artworkId = metaFor(file).artworkId;
+    const artworkVersion = metaFor(file).artworkVersion;
+    const idempotencyKey = metaFor(file).idempotencyKey;
+    if (typeof idempotencyKey === "string") cancelledReservations.current.add(idempotencyKey);
+    uppy.setFileMeta(fileId, { ...file.meta, cancelled: true });
+    uppy.removeFile(fileId);
+    const record = records.find((item) => item.id === artworkId);
+    if (typeof artworkId === "string" && typeof artworkVersion === "number") await remove({ id: artworkId, version: artworkVersion });
+    else if (record) await remove(record);
+  };
+
+  return (
+    <section className="mt-6 rounded-control border border-border bg-panel p-5" aria-labelledby="upload-artwork-title">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div><p className="font-mono text-[0.56rem] uppercase tracking-widest text-accent">Private resumable upload</p><h2 id="upload-artwork-title" className="mt-2 font-display text-2xl uppercase text-text-primary">Add artwork files</h2></div>
+        <p className="font-mono text-[0.56rem] uppercase tracking-widest text-text-muted">{records.filter((item) => item.status !== "deleting").length} / 20 files · {formatBytes(readiness.totalDeclaredBytes)} / 250 MiB</p>
+      </div>
+      <p className="mt-4 text-sm leading-6 text-text-muted">PNG, JPG, JPEG, WebP, PDF, AI, or PSD. Each file may be up to 50 MiB. Extension and declared type checks do not inspect file contents.</p>
+      {recoveryTarget && <div className="mt-4 border border-accent/60 bg-accent/5 p-4"><p className="font-mono text-[0.58rem] font-bold uppercase tracking-widest text-text-primary">Recovering exact upload record</p><p className="mt-2 text-sm text-text-muted">Reselect <strong className="text-text-primary">{recoveryTarget.originalName}</strong>. Matching metadata alone never chooses a record automatically.</p><button type="button" className="mt-3 font-mono text-[0.58rem] uppercase tracking-widest text-text-primary underline decoration-accent underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent" onClick={() => selectRecoveryTarget(null)}>Cancel recovery</button></div>}
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <input {...input.getInputProps()} className="sr-only" aria-label="Choose artwork files" />
+        <ActionButton {...input.getButtonProps()}><FileUp aria-hidden="true" size={16} /> {recoveryTarget ? `Reselect ${recoveryTarget.originalName}` : transferReplacement ? "Replace artwork file" : "Choose files"}</ActionButton>
+        <button {...(dropzone.getRootProps() as unknown as ButtonHTMLAttributes<HTMLButtonElement>)} type="button" className="min-h-20 rounded-control border border-dashed border-border px-4 font-mono text-xs uppercase tracking-widest text-text-muted hover:border-accent hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent">Drop files here or press Enter</button>
+        <input {...dropzone.getInputProps()} className="sr-only" aria-label="Select artwork files from dropzone" accept={ARTWORK_ACCEPT} />
+      </div>
+      {(selectionError || error) && <p role="alert" className="mt-4 text-sm text-error">{selectionError || error}</p>}
+      {transferReplacement && <p className="mt-4 text-xs leading-5 text-text-muted">Replacement uploads to a new private path. The current ready file remains until the replacement is verified.</p>}
+      <p className="sr-only" aria-live="polite">{announcement}</p>
+      <p className="mt-3 font-mono text-[0.54rem] uppercase tracking-widest text-text-muted" aria-live="polite">Upload status: {uploadStage}</p>
+
+      {files.length > 0 && <ul className="mt-6 space-y-3" aria-label="Selected artwork upload queue">
+        {files.map((file) => {
+          const progress = file.progress;
+          const percentage = typeof progress.percentage === "number" ? progress.percentage : 0;
+          const uploaded = typeof progress.bytesUploaded === "number" ? progress.bytesUploaded : 0;
+          return <li key={file.id} className="border border-border bg-background p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold text-text-primary">{file.name}</p><p className="mt-1 font-mono text-[0.55rem] uppercase tracking-widest text-text-muted">{formatBytes(uploaded)} / {formatBytes(file.size ?? 0)} · {percentage}%</p></div><span className="font-mono text-[0.55rem] uppercase tracking-widest text-accent">{progress.uploadComplete ? "Uploaded" : progress.uploadStarted ? file.isPaused ? "Paused" : "Uploading" : "Selected"}</span></div>
+            {file.data instanceof File && !progress.uploadComplete && <LocalFilePreview file={file.data} />}
+            <progress className="mt-3 h-2 w-full accent-[var(--accent)]" max={100} value={percentage} aria-label={`Upload progress for ${file.name}`}>{percentage}%</progress>
+            <div className="mt-3 flex flex-wrap gap-4">
+              {progress.uploadStarted && !progress.uploadComplete && <button type="button" onClick={() => uppy.pauseResume(file.id)} className="inline-flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-widest text-text-primary underline decoration-accent underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent">{file.isPaused ? <Play aria-hidden="true" size={13} /> : <Pause aria-hidden="true" size={13} />}{file.isPaused ? `Resume ${file.name}` : `Pause ${file.name}`}</button>}
+              {file.error && <button type="button" onClick={() => void uppy.retryUpload(file.id)} className="inline-flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-widest text-text-primary underline decoration-accent underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"><RotateCcw aria-hidden="true" size={13} /> Retry {file.name}</button>}
+              {!progress.uploadComplete && <button type="button" onClick={() => void cancelFile(file.id)} className="inline-flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-widest text-error underline decoration-current underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"><Trash2 aria-hidden="true" size={13} /> Cancel {file.name}</button>}
+            </div>
+          </li>;
+        })}
+      </ul>}
+      <ActionButton type="button" className="mt-5 w-full sm:w-auto" disabled={files.length === 0 || state === "mutating"} onClick={() => void beginUpload()}><Upload aria-hidden="true" size={16} /> Upload selected files</ActionButton>
+    </section>
+  );
+}

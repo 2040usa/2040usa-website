@@ -8,7 +8,7 @@
 - Never put secrets, credentials, private keys, or production customer data in source control.
 - Report verification results honestly. Include actual failures and do not imply an unrun check passed.
 - Generated code must remain understandable, intentionally named, and maintainable by a small product team.
-- Increment 2A authorizes only anonymous Supabase Auth and durable order-draft persistence in project `bcalocreiqbyufnakrnq`. Storage, artwork records, pricing, submission, payments, accounts, and production administration remain deferred.
+- Increment 2B authorizes private artwork records and direct Uppy/TUS uploads only in project `bcalocreiqbyufnakrnq`. Pricing, submission, payments, accounts, artwork approval, and production administration remain deferred.
 - Supabase SQL migrations are the sole schema-migration authority. Never create Prisma migrations or run Prisma Migrate or `prisma db push`.
 - Prisma is server-only typed data access. Customer queries must derive ownership from verified Supabase claims and include the owner filter.
 - The order draft store must remain scoped to the `/order` layout provider. Zustand remains immediate client state; Postgres is authoritative for durable identity, ownership, versions, and completion invariants.
@@ -16,6 +16,8 @@
 - Hydration and Auth verification errors must fail visibly and retryably; never reinterpret an unexpected failure as an absent draft.
 - Deployment mode and its public counterpart are required and must fail closed. Trusted production hosting cannot be overridden to development.
 - Do not reuse or access another Supabase project. Remote mutation scripts must verify `bcalocreiqbyufnakrnq` before executing.
+- Storage paths are server-generated. Never accept owner IDs or object paths from browser input, never upsert customer artwork, and delete objects only through the authenticated Storage API.
+- Browser `getSession()` may forward the current access token to Storage but is never authorization evidence; protected APIs use verified claims.
 - Preserve accessibility, mobile behavior, and the industrial 2040 USA visual language when changing frontend work.
 
 <!-- BEGIN:nextjs-agent-rules -->

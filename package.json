@@ -24,7 +24,8 @@
     "db:migration:push": "tsx scripts/verify-supabase-target.ts && supabase db push --linked",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
-    "test:hosted": "tsx --conditions=react-server tests/integration/hosted.ts"
+    "test:hosted": "tsx --conditions=react-server tests/integration/hosted.ts",
+    "test:hosted:artwork": "tsx --conditions=react-server tests/integration/hosted.ts --artwork-only"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.7.1",
@@ -33,6 +34,9 @@
     "@prisma/client": "^7.9.1",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.0",
+    "@uppy/core": "5.2.0",
+    "@uppy/react": "5.2.0",
+    "@uppy/tus": "5.1.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.536.0",
     "motion": "^12.43.0",

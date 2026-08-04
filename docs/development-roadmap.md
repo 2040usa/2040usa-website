@@ -9,7 +9,7 @@ Each increment requires strategy-chat approval.
 
 - Four route-specific steps, React Hook Form/Zod validation, layout-scoped Zustand, and Review
 
-## Increment 2A — durable anonymous drafts (current)
+## Increment 2A — durable anonymous drafts (complete)
 
 - Dedicated hosted Supabase development project
 - Anonymous identity only at explicit route confirmation
@@ -20,9 +20,12 @@ Each increment requires strategy-chat approval.
 - Additive JSON route hardening migration `20260803000200`
 - No artwork, pricing, submission, payment, order, or production workflow
 
-## Increment 2B — artwork foundation (deferred)
+## Increment 2B — artwork foundation (current)
 
-Private artwork records, Storage, Uppy/TUS resumable uploads, and image/file inspection are intentionally excluded from 2A.
+- Private `customer-artwork` bucket and owner-scoped `artwork_files` records
+- Server reservations, generated paths, and direct Uppy/TUS uploads
+- Server-verified completion, reconciliation, readiness gates, and cleanup
+- Extension/MIME normalization only; deep inspection, approval, pricing, and submission remain deferred
 
 ## Later increments — planned, not authorized
 

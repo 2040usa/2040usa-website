@@ -19,4 +19,6 @@ Working configuration may contain blank or invalid strings. Completed configurat
 - Required matching deployment modes fail closed; trusted production hosting forces production protections.
 - Hosted tests create exactly two identified users and never guess recent identities.
 
-There are no artwork records, Storage buckets, uploads, prices, real orders, payments, accounts, or production controls. Increment 2B remains deferred.
+Increment 2B adds canonical artwork metadata in Postgres and private bytes in Supabase Storage. The browser transfers directly with headless Uppy/TUS after a server reservation. Protected APIs reserve, verify completion, reconcile, acknowledge readiness, preview, and delete. Zustand remains immediate draft state, the artwork provider owns canonical metadata, and Uppy alone owns ephemeral `File` and progress state.
+
+There are still no prices, real orders, payments, accounts, staff approvals, deep file inspection, or production controls.

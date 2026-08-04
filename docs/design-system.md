@@ -60,3 +60,5 @@ Order forms use bordered production panels rather than detached checkout cards. 
 Durable-state labels use the existing mono technical treatment: Initializing, Establishing secure draft, Saving, Saved, Unable to save, and Conflict detected. Success and error colors supplement explicit text rather than carrying meaning alone. Turnstile appears only at the first anonymous identity boundary. Conflict recovery and retry remain native buttons with visible focus states.
 
 Hydration failure uses a full-content unavailable state with an accessible Retry draft check action; it never reveals an empty Start form while canonical state is unknown. Pending route radio styling represents an unconfirmed UI choice, not a saved server state.
+
+Artwork controls reuse technical borders, near-black panels, condensed headings, monospaced status labels, and the electric accent. Uploading, paused, retryable, verified-ready, and reselect states use explicit text/icons in addition to color. The interface is custom headless Uppy rather than a stock Dashboard, and progress does not depend on decorative animation.

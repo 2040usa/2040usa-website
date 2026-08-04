@@ -2,7 +2,7 @@
 
 Standalone marketing, ordering, and production-management application for 2040 USA, a DTF printing business in Downtown Los Angeles.
 
-Increment 2A adds an anonymously owned durable draft at `/order/start`. Browsing remains anonymous until a visitor explicitly confirms a starting point. At that boundary, Supabase Auth establishes or reuses an anonymous session and Postgres stores route progress, incomplete working values, and separately validated configuration. Saved values survive refresh; no real order is created.
+Increment 2B adds privately owned artwork records and authenticated resumable uploads to the durable draft at `/order/start`. Browsing remains anonymous until route confirmation. Saved project details and completed artwork metadata survive refresh; no real order is created.
 
 ## Requirements
 
@@ -44,6 +44,7 @@ npm run build
 - A layout-scoped vanilla Zustand store for immediate interactive draft state
 - Supabase Auth/Postgres for anonymous durable ownership and persistence
 - Prisma 7 with the PostgreSQL driver adapter for server-only typed access
+- Uppy 5 with TUS for headless, resumable browser-to-private-Storage uploads
 - Vitest and Playwright for focused automated coverage
 
 No external imagery is hotlinked. The production-style artwork and registration panels are code-native placeholders intended to be replaced with approved 2040 USA photography or video later.
@@ -54,4 +55,4 @@ The display stack uses locally available condensed industrial faces: Arial Narro
 
 See [product architecture](docs/product-architecture.md), [design system](docs/design-system.md), and [development roadmap](docs/development-roadmap.md) for project decisions.
 
-The [order workflow](docs/order-workflow.md), [backend guide](docs/backend-development.md), and [durable-draft contract](docs/durable-drafts.md) document the workflow and security boundaries.
+The [order workflow](docs/order-workflow.md), [backend guide](docs/backend-development.md), [durable-draft contract](docs/durable-drafts.md), and [artwork upload guide](docs/artwork-uploads.md) document the workflow and security boundaries.

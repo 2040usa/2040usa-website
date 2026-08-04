@@ -18,6 +18,9 @@ type PersistenceActions = {
   reloadLatest: () => Promise<void>;
   retry: () => void;
   retryHydration: () => void;
+  runSerialized: <T>(operation: () => Promise<T>) => Promise<T>;
+  runAfterDraftFlush: <T>(operation: (state: OrderDraftStore) => Promise<T>) => Promise<T>;
+  applyServerDraft: (draft: CanonicalOrderDraft) => void;
 };
 const PersistenceContext = createContext<PersistenceActions | null>(null);
 
@@ -42,8 +45,8 @@ async function readResponseBody(response: Response) {
 async function responseDraft(response: Response) {
   const body = await readResponseBody(response);
   const error = body && typeof body === "object" && "error" in body ? (body as { error?: { code?: string; message?: string } }).error : undefined;
-  if (!response.ok) throw Object.assign(new Error(error?.message ?? "Draft request failed."), { status: response.status, code: error?.code });
   const result = body && typeof body === "object" && "draft" in body ? canonicalOrderDraftSchema.safeParse((body as { draft: unknown }).draft) : null;
+  if (!response.ok) throw Object.assign(new Error(error?.message ?? "Draft request failed."), { status: response.status, code: error?.code, draft: result?.success ? result.data : null });
   if (!result?.success) throw new Error("The draft service returned an invalid draft.");
   return result.data;
 }
@@ -117,6 +120,14 @@ function usePersistence(store: OrderDraftStoreApi): PersistenceActions {
 
   const flush = useCallback(() => coordinateMutation(flushWithinMutation), [coordinateMutation, flushWithinMutation]);
 
+  const runAfterDraftFlush = useCallback(<T,>(operation: (state: OrderDraftStore) => Promise<T>) => coordinateMutation(async () => {
+    cancelDebounce();
+    if (!await flushWithinMutation()) {
+      throw new Error(store.getState().persistenceError ?? "The latest draft changes could not be saved.");
+    }
+    return operation(store.getState());
+  }), [cancelDebounce, coordinateMutation, flushWithinMutation, store]);
+
   useEffect(() => { flushRef.current = flush; }, [flush]);
 
   const hydrate = useCallback(async () => {
@@ -144,13 +155,7 @@ function usePersistence(store: OrderDraftStoreApi): PersistenceActions {
   }, [hydrate, store]);
 
   return useMemo(() => ({
-    bootstrap: (route: OrderRoute, captchaToken: string) => coordinateMutation(async () => {
-      cancelDebounce();
-      if (!await flushWithinMutation()) {
-        throw new Error(store.getState().persistenceError ?? "Save the current draft before changing its starting point.");
-      }
-
-      const flushedState = store.getState();
+    bootstrap: (route: OrderRoute, captchaToken: string) => runAfterDraftFlush(async (flushedState) => {
       if (flushedState.serverDraftId && flushedState.selectedRoute === route && flushedState.startingPointConfirmed) {
         return;
       }
@@ -169,15 +174,27 @@ function usePersistence(store: OrderDraftStoreApi): PersistenceActions {
         : { selectedRoute: route };
       const response = await fetch("/api/order-drafts/bootstrap", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (response.status === 409) store.getState().markConflict();
-      applyCanonical(await responseDraft(response));
+      try {
+        applyCanonical(await responseDraft(response));
+      } catch (error) {
+        const canonical = error && typeof error === "object" && "draft" in error ? (error as { draft?: CanonicalOrderDraft | null }).draft : null;
+        if (canonical) applyCanonical(canonical);
+        throw error;
+      }
     }),
     flush,
-    reset: () => coordinateMutation(async () => {
-      cancelDebounce();
-      const state = store.getState();
+    reset: () => runAfterDraftFlush(async (state) => {
       if (!state.serverDraftId || !state.serverVersion) { state.resetDraft(); return; }
-      const draft = await responseDraft(await fetch(`/api/order-drafts/${state.serverDraftId}/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedVersion: state.serverVersion }) }));
-      applyCanonical(draft);
+      try {
+        const response = await fetch(`/api/order-drafts/${state.serverDraftId}/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedVersion: state.serverVersion }) });
+        if (response.status === 409) store.getState().markConflict();
+        const draft = await responseDraft(response);
+        applyCanonical(draft);
+      } catch (error) {
+        const canonical = error && typeof error === "object" && "draft" in error ? (error as { draft?: CanonicalOrderDraft | null }).draft : null;
+        if (canonical) applyCanonical(canonical);
+        throw error;
+      }
     }),
     reloadLatest: () => coordinateMutation(async () => {
       cancelDebounce();
@@ -188,7 +205,10 @@ function usePersistence(store: OrderDraftStoreApi): PersistenceActions {
     }),
     retry: () => { void flush(); },
     retryHydration: () => { void hydrate(); },
-  }), [applyCanonical, cancelDebounce, coordinateMutation, flush, flushWithinMutation, hydrate, store]);
+    runSerialized: coordinateMutation,
+    runAfterDraftFlush,
+    applyServerDraft: applyCanonical,
+  }), [applyCanonical, cancelDebounce, coordinateMutation, flush, hydrate, runAfterDraftFlush, store]);
 }
 
 function PersistenceProvider({ store, children }: { store: OrderDraftStoreApi; children: ReactNode }) {

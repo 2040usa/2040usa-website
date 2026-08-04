@@ -27,3 +27,13 @@ There is no remote reset script. The hosted command creates exactly two tagged a
 ## Current limitation
 
 The repository cannot prove empty-database replay without Docker, a disposable second project, or a Supabase branch. Stored migrations and hosted history match, but that is not clean-replay evidence.
+
+## Hosted artwork workflow
+
+The dedicated project remains `bcalocreiqbyufnakrnq`; Docker and local Supabase are not used. Verify the target and migration history before dry run or push. `npm run test:hosted` creates exactly two identified anonymous users shared across draft, artwork-table, Storage-RLS, and repository checks. Public rows and objects are cleaned through product-safe mechanisms; Auth rows remain because no admin credential is authorized.
+
+The bucket is migration-managed. Never change it in Dashboard, run a remote reset, or delete Storage objects through SQL.
+
+Applied migration sources are byte-immutable. Increment 2B authority and recovery corrections live only in `20260804000200_harden_artwork_authority_and_recovery.sql`. The artwork repository uses the per-draft advisory lock for reservation and cleanup preparation; browser Data API clients cannot mutate canonical artwork rows.
+
+`20260804000300_harden_artwork_upload_attempt_policy.sql` restricts Storage INSERT to unexpired pending attempts and unexpired `upload_failed` retries. Cleanup finalization reacquires the draft advisory lock and requires an empty artwork-row set; reconciliation never substitutes the latest draft version for a stale submitted version.

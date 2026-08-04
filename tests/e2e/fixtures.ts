@@ -1,4 +1,7 @@
 import { test as base, expect, type BrowserContext, type Page, type Response } from "@playwright/test";
+import { existsSync, mkdirSync } from "node:fs";
+
+const sharedAuthStatePath = "artifacts/playwright/shared-auth-state.json";
 
 type ExpectedFailure = { method: string; path: string; status: number; responses: number; consoleDiagnostics: number };
 export type RuntimeMonitor = {
@@ -21,7 +24,8 @@ export function monitorRuntime(page: Page): RuntimeMonitor {
       if (current.consoleDiagnostics > 1) consoleProblems.push(`additional scoped diagnostic: ${message.text()}`);
       return;
     }
-    consoleProblems.push(`${message.type()}: ${message.text()}`);
+    const source = message.location().url ? ` (${new URL(message.location().url).pathname})` : "";
+    consoleProblems.push(`${message.type()}: ${message.text()}${source}`);
   });
   page.on("requestfailed", (request) => {
     const reason = request.failure()?.errorText;
@@ -68,8 +72,10 @@ export function monitorRuntime(page: Page): RuntimeMonitor {
 
 export const test = base.extend<{ runtimeMonitor: RuntimeMonitor }, { sharedContext: BrowserContext }>({
   sharedContext: [async ({ browser }, provide) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext(existsSync(sharedAuthStatePath) ? { storageState: sharedAuthStatePath } : undefined);
     await provide(context);
+    mkdirSync("artifacts/playwright", { recursive: true });
+    await context.storageState({ path: sharedAuthStatePath });
     await context.close();
   }, { scope: "worker" }],
   page: async ({ sharedContext }, provide) => {
