@@ -56,3 +56,7 @@ Keep this layer small. Add a primitive only after a repeated interface need is d
 The `/order` experience uses the same tokens and typography with a calmer, task-focused density. A persistent shell provides compact branding, an explicit prototype disclosure, semantic progress, route focus management, and an optional draft rail. Native radios, checkboxes, number inputs, text inputs, textareas, and buttons are preferred over custom controls. Completed, current, and future progress states include text or symbols in addition to color.
 
 Order forms use bordered production panels rather than detached checkout cards. Error messages use the semantic error token, remain connected to their fields, and are summarized after an attempted continuation. No pricing, cart, coupon, payment, or storefront visual language is permitted before those capabilities are authorized.
+
+Durable-state labels use the existing mono technical treatment: Initializing, Establishing secure draft, Saving, Saved, Unable to save, and Conflict detected. Success and error colors supplement explicit text rather than carrying meaning alone. Turnstile appears only at the first anonymous identity boundary. Conflict recovery and retry remain native buttons with visible focus states.
+
+Hydration failure uses a full-content unavailable state with an accessible Retry draft check action; it never reveals an empty Start form while canonical state is unknown. Pending route radio styling represents an unconfirmed UI choice, not a saved server state.

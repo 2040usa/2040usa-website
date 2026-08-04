@@ -5,7 +5,7 @@ import { OrderShell } from "@/components/order/order-shell";
 
 export const metadata: Metadata = {
   title: "Order Prototype | 2040 USA",
-  description: "Configure an in-memory DTF project draft. No order is created.",
+  description: "Configure a durable DTF project draft. No order is created.",
 };
 
 export default function OrderLayout({ children }: { children: ReactNode }) {

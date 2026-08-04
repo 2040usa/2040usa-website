@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["public"]
+}
+
+model OrderDraft {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerUserId          String   @unique(map: "order_drafts_one_active_per_owner") @map("owner_user_id") @db.Uuid
+  status               String   @default("active")
+  selectedRoute        String?  @map("selected_route")
+  startingPointConfirmed Boolean @default(false) @map("starting_point_confirmed")
+  artworkAcknowledged  Boolean  @default(false) @map("artwork_acknowledged")
+  workingConfiguration Json?    @map("working_configuration")
+  configuration        Json?
+  version              Int      @default(1)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("order_drafts")
+  @@schema("public")
+}

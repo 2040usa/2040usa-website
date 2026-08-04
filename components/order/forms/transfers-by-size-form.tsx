@@ -9,7 +9,7 @@ import { MAX_DYNAMIC_ROWS, MAX_NOTES_LENGTH } from "@/lib/order-draft/constants"
 import type { WorkingTransfersBySizeConfiguration } from "@/lib/order-draft/types";
 import { createDraftRowId } from "@/lib/order-draft/summary";
 import { toWorkingConfiguration } from "@/lib/order-draft/working-configuration";
-import { useOrderDraft } from "@/components/order/order-draft-provider";
+import { useOrderDraft, useOrderDraftPersistence } from "@/components/order/order-draft-provider";
 import { ActionButton } from "@/components/ui/button";
 import { FieldErrorMessage, FormErrorSummary, inputClassName, labelClassName } from "@/components/order/forms/form-feedback";
 import { useWorkingConfiguration } from "@/components/order/forms/use-working-configuration";
@@ -23,13 +23,14 @@ export function TransfersBySizeForm() {
   const working = useOrderDraft((state) => state.workingConfiguration?.route === "transfers-by-size" ? state.workingConfiguration : null);
   const completed = useOrderDraft((state) => state.configuration?.route === "transfers-by-size" ? state.configuration : null);
   const saveConfiguration = useOrderDraft((state) => state.saveConfiguration);
+  const { flush } = useOrderDraftPersistence();
   const { control, register, handleSubmit, formState, watch } = useForm<WorkingTransfersBySizeConfiguration, unknown, TransfersBySizeFormValues>({
     resolver: zodResolver(transfersBySizeConfigurationSchema) as Resolver<WorkingTransfersBySizeConfiguration, unknown, TransfersBySizeFormValues>,
     defaultValues: working ?? (completed ? toWorkingConfiguration(completed) : defaults),
   });
   const { fields, append, remove } = useFieldArray({ control, name: "sizes", keyName: "fieldKey" });
   useWorkingConfiguration("transfers-by-size", watch);
-  const onSubmit = (values: TransfersBySizeFormValues) => { saveConfiguration(values); router.push("/order/review"); };
+  const onSubmit = async (values: TransfersBySizeFormValues) => { saveConfiguration(values); if (await flush()) router.push("/order/review"); };
 
   return (
     <form noValidate onSubmit={handleSubmit(onSubmit)}>

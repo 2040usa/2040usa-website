@@ -7,7 +7,7 @@ import { fullApparelConfigurationSchema, type FullApparelFormValues } from "@/li
 import { garmentSources, printLocations, projectTypes, type WorkingFullApparelConfiguration } from "@/lib/order-draft/types";
 import { MAX_NOTES_LENGTH } from "@/lib/order-draft/constants";
 import { toWorkingConfiguration } from "@/lib/order-draft/working-configuration";
-import { useOrderDraft } from "@/components/order/order-draft-provider";
+import { useOrderDraft, useOrderDraftPersistence } from "@/components/order/order-draft-provider";
 import { FieldErrorMessage, FormErrorSummary, inputClassName, labelClassName } from "@/components/order/forms/form-feedback";
 import { useWorkingConfiguration } from "@/components/order/forms/use-working-configuration";
 import { StepActions } from "@/components/order/step-actions";
@@ -22,12 +22,13 @@ export function FullApparelForm() {
   const working = useOrderDraft((state) => state.workingConfiguration?.route === "full-apparel" ? state.workingConfiguration : null);
   const completed = useOrderDraft((state) => state.configuration?.route === "full-apparel" ? state.configuration : null);
   const saveConfiguration = useOrderDraft((state) => state.saveConfiguration);
+  const { flush } = useOrderDraftPersistence();
   const { register, handleSubmit, formState, watch } = useForm<WorkingFullApparelConfiguration, unknown, FullApparelFormValues>({
     resolver: zodResolver(fullApparelConfigurationSchema) as Resolver<WorkingFullApparelConfiguration, unknown, FullApparelFormValues>,
     defaultValues: working ?? (completed ? toWorkingConfiguration(completed) : defaults),
   });
   useWorkingConfiguration("full-apparel", watch);
-  const onSubmit = (values: FullApparelFormValues) => { saveConfiguration(values); router.push("/order/review"); };
+  const onSubmit = async (values: FullApparelFormValues) => { saveConfiguration(values); if (await flush()) router.push("/order/review"); };
 
   return (
     <form noValidate onSubmit={handleSubmit(onSubmit)}>

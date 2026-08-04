@@ -133,3 +133,13 @@ export type OrderDraftSnapshot = {
   configuration: OrderConfiguration | null;
   lastCompletedStep: CompletedStep;
 };
+
+export type DraftHydrationState = "initializing" | "ready" | "error";
+export type DraftSaveState = "idle" | "saving" | "saved" | "error" | "conflict";
+
+export type CanonicalOrderDraft = OrderDraftSnapshot & {
+  id: string;
+  version: number;
+  status: "active";
+  updatedAt: string;
+};

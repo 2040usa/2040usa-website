@@ -7,7 +7,7 @@ import { gangSheetConfigurationSchema, type GangSheetFormValues } from "@/lib/or
 import { MAX_NOTES_LENGTH } from "@/lib/order-draft/constants";
 import type { WorkingGangSheetConfiguration } from "@/lib/order-draft/types";
 import { toWorkingConfiguration } from "@/lib/order-draft/working-configuration";
-import { useOrderDraft } from "@/components/order/order-draft-provider";
+import { useOrderDraft, useOrderDraftPersistence } from "@/components/order/order-draft-provider";
 import { FieldErrorMessage, FormErrorSummary, inputClassName, labelClassName } from "@/components/order/forms/form-feedback";
 import { useWorkingConfiguration } from "@/components/order/forms/use-working-configuration";
 import { StepActions } from "@/components/order/step-actions";
@@ -19,12 +19,13 @@ export function GangSheetForm() {
   const working = useOrderDraft((state) => state.workingConfiguration?.route === "gang-sheet" ? state.workingConfiguration : null);
   const completed = useOrderDraft((state) => state.configuration?.route === "gang-sheet" ? state.configuration : null);
   const saveConfiguration = useOrderDraft((state) => state.saveConfiguration);
+  const { flush } = useOrderDraftPersistence();
   const { register, handleSubmit, formState, watch } = useForm<WorkingGangSheetConfiguration, unknown, GangSheetFormValues>({
     resolver: zodResolver(gangSheetConfigurationSchema) as Resolver<WorkingGangSheetConfiguration, unknown, GangSheetFormValues>,
     defaultValues: working ?? (completed ? toWorkingConfiguration(completed) : defaults),
   });
   useWorkingConfiguration("gang-sheet", watch);
-  const onSubmit = (values: GangSheetFormValues) => { saveConfiguration(values); router.push("/order/review"); };
+  const onSubmit = async (values: GangSheetFormValues) => { saveConfiguration(values); if (await flush()) router.push("/order/review"); };
 
   return (
     <form noValidate onSubmit={handleSubmit(onSubmit)}>

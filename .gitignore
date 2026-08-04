@@ -4,6 +4,7 @@
 # Next.js output
 /.next
 /out
+/generated/prisma
 
 # tests
 /coverage
@@ -22,3 +23,4 @@
 Thumbs.db
 *.tsbuildinfo
 npm-debug.log*
+/supabase/.temp

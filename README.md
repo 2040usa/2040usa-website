@@ -2,17 +2,19 @@
 
 Standalone marketing, ordering, and production-management application for 2040 USA, a DTF printing business in Downtown Los Angeles.
 
-Increment 1 adds a real, client-side ordering prototype at `/order/start`. Visitors can choose a starting route, review artwork guidance, enter validated project details, and review an in-memory draft. In-progress form values survive internal order navigation, while only a separately validated completed configuration can unlock Review. A full refresh still clears the prototype. It does not connect to a database, accept files, authenticate users, calculate prices, create orders, or take payment.
+Increment 2A adds an anonymously owned durable draft at `/order/start`. Browsing remains anonymous until a visitor explicitly confirms a starting point. At that boundary, Supabase Auth establishes or reuses an anonymous session and Postgres stores route progress, incomplete working values, and separately validated configuration. Saved values survive refresh; no real order is created.
 
 ## Requirements
 
 - Node.js 24 or newer
 - npm 11 or newer
+- Private access to the dedicated `2040usa-development` Supabase project
 
 ## Local development
 
 ```bash
 npm install
+npm run prisma:generate
 npm run dev
 ```
 
@@ -24,10 +26,13 @@ Open `http://localhost:3000`.
 npm run typecheck
 npm run lint
 npm test
+npm run test:hosted
 npx playwright install chromium
 npm run test:e2e
 npm run build
 ```
+
+`APP_DEPLOYMENT_ENV` and `NEXT_PUBLIC_APP_DEPLOYMENT_ENV` are required and must agree. `npm run build` generates the ignored Prisma client first, so deployment does not depend on stale local output.
 
 ## Technology
 
@@ -36,7 +41,9 @@ npm run build
 - Motion for reduced-motion-aware section reveals
 - Lucide React for interface icons
 - React Hook Form and Zod for accessible route-specific project forms
-- A layout-scoped vanilla Zustand store for temporary, in-memory draft state
+- A layout-scoped vanilla Zustand store for immediate interactive draft state
+- Supabase Auth/Postgres for anonymous durable ownership and persistence
+- Prisma 7 with the PostgreSQL driver adapter for server-only typed access
 - Vitest and Playwright for focused automated coverage
 
 No external imagery is hotlinked. The production-style artwork and registration panels are code-native placeholders intended to be replaced with approved 2040 USA photography or video later.
@@ -47,4 +54,4 @@ The display stack uses locally available condensed industrial faces: Arial Narro
 
 See [product architecture](docs/product-architecture.md), [design system](docs/design-system.md), and [development roadmap](docs/development-roadmap.md) for project decisions.
 
-The [order workflow](docs/order-workflow.md) documents the four prototype routes, navigation rules, validation boundaries, and future backend seams.
+The [order workflow](docs/order-workflow.md), [backend guide](docs/backend-development.md), and [durable-draft contract](docs/durable-drafts.md) document the workflow and security boundaries.

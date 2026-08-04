@@ -9,7 +9,7 @@ import { MAX_DYNAMIC_ROWS, MAX_NOTES_LENGTH } from "@/lib/order-draft/constants"
 import type { WorkingSeparateArtworkConfiguration } from "@/lib/order-draft/types";
 import { createDraftRowId } from "@/lib/order-draft/summary";
 import { toWorkingConfiguration } from "@/lib/order-draft/working-configuration";
-import { useOrderDraft } from "@/components/order/order-draft-provider";
+import { useOrderDraft, useOrderDraftPersistence } from "@/components/order/order-draft-provider";
 import { ActionButton } from "@/components/ui/button";
 import { FieldErrorMessage, FormErrorSummary, inputClassName, labelClassName } from "@/components/order/forms/form-feedback";
 import { useWorkingConfiguration } from "@/components/order/forms/use-working-configuration";
@@ -23,13 +23,14 @@ export function SeparateArtworkForm() {
   const working = useOrderDraft((state) => state.workingConfiguration?.route === "separate-artwork" ? state.workingConfiguration : null);
   const completed = useOrderDraft((state) => state.configuration?.route === "separate-artwork" ? state.configuration : null);
   const saveConfiguration = useOrderDraft((state) => state.saveConfiguration);
+  const { flush } = useOrderDraftPersistence();
   const { control, register, handleSubmit, formState, watch } = useForm<WorkingSeparateArtworkConfiguration, unknown, SeparateArtworkFormValues>({
     resolver: zodResolver(separateArtworkConfigurationSchema) as Resolver<WorkingSeparateArtworkConfiguration, unknown, SeparateArtworkFormValues>,
     defaultValues: working ?? (completed ? toWorkingConfiguration(completed) : defaults),
   });
   const { fields, append, remove } = useFieldArray({ control, name: "designs", keyName: "fieldKey" });
   useWorkingConfiguration("separate-artwork", watch);
-  const onSubmit = (values: SeparateArtworkFormValues) => { saveConfiguration(values); router.push("/order/review"); };
+  const onSubmit = async (values: SeparateArtworkFormValues) => { saveConfiguration(values); if (await flush()) router.push("/order/review"); };
 
   return (
     <form noValidate onSubmit={handleSubmit(onSubmit)}>

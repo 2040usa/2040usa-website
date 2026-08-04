@@ -77,6 +77,39 @@ export const orderConfigurationSchema = z.discriminatedUnion("route", [
   fullApparelConfigurationSchema,
 ]);
 
+const workingRowIdSchema = z.string().min(1).max(100);
+const workingTextSchema = z.string().max(MAX_NOTES_LENGTH);
+const workingNumericSchema = z.string().max(40);
+
+export const workingOrderConfigurationSchema = z.discriminatedUnion("route", [
+  z.object({
+    route: z.literal("gang-sheet"),
+    sheetCount: workingNumericSchema,
+    finishedWidth: workingNumericSchema,
+    finishedLength: workingNumericSchema,
+    notes: workingTextSchema,
+  }),
+  z.object({
+    route: z.literal("separate-artwork"),
+    designs: z.array(z.object({ id: workingRowIdSchema, label: z.string().max(100), width: workingNumericSchema, quantity: workingNumericSchema })).min(1).max(MAX_DYNAMIC_ROWS).superRefine(uniqueRowIds),
+    notes: workingTextSchema,
+  }),
+  z.object({
+    route: z.literal("transfers-by-size"),
+    designLabel: z.string().max(100),
+    sizes: z.array(z.object({ id: workingRowIdSchema, width: workingNumericSchema, quantity: workingNumericSchema })).min(1).max(MAX_DYNAMIC_ROWS).superRefine(uniqueRowIds),
+    notes: workingTextSchema,
+  }),
+  z.object({
+    route: z.literal("full-apparel"),
+    garmentSource: z.union([z.literal(""), z.enum(garmentSources)]),
+    projectType: z.union([z.literal(""), z.enum(projectTypes)]),
+    garmentQuantity: workingNumericSchema,
+    printLocations: z.array(z.enum(printLocations)).max(printLocations.length),
+    notes: workingTextSchema,
+  }),
+]);
+
 export type GangSheetFormValues = z.infer<typeof gangSheetConfigurationSchema>;
 export type SeparateArtworkFormValues = z.infer<typeof separateArtworkConfigurationSchema>;
 export type TransfersBySizeFormValues = z.infer<typeof transfersBySizeConfigurationSchema>;
