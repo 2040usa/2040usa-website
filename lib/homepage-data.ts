@@ -1,20 +1,12 @@
 import {
-  Boxes,
-  CheckCircle2,
   FileCheck2,
   Layers3,
-  PackageCheck,
-  Printer,
-  ScanLine,
-  Scissors,
-  Shirt,
-  Sparkles,
   Upload,
 } from "lucide-react";
 import { ORDER_ROUTE_OPTIONS } from "@/lib/order-draft/constants";
 import type { OrderRoute } from "@/lib/order-draft/types";
 
-const routeIcons = { "gang-sheet": Layers3, "separate-artwork": FileCheck2, "transfers-by-size": ScanLine, "full-apparel": Shirt } satisfies Record<OrderRoute, typeof Layers3>;
+const routeIcons = { "gang-sheet": Layers3, "individual-designs": FileCheck2 } satisfies Record<OrderRoute, typeof Layers3>;
 
 export const workflowOptions = ORDER_ROUTE_OPTIONS.map((option) => ({
   route: option.value,
@@ -25,18 +17,16 @@ export const workflowOptions = ORDER_ROUTE_OPTIONS.map((option) => ({
 }));
 
 export const processSteps = [
-  { title: "Upload", detail: "Send your artwork and project notes.", icon: Upload },
-  { title: "Artwork check", detail: "We inspect size, resolution, and transparency.", icon: FileCheck2 },
-  { title: "Print", detail: "Approved artwork moves into the print queue.", icon: Printer },
-  { title: "Cure", detail: "Ink and adhesive move through the curing stage.", icon: Sparkles },
-  { title: "Quality check", detail: "Registration, color, and finish are reviewed.", icon: CheckCircle2 },
-  { title: "Pickup", detail: "Packed, labeled, and ready in Downtown LA.", icon: PackageCheck },
+  { title: "Choose a route", detail: "Start with an arranged gang sheet or individual designs.", icon: Layers3 },
+  { title: "Upload", detail: "Add files through the private resumable upload.", icon: Upload },
+  { title: "Project details", detail: "Save dimensions, quantities, and requested changes.", icon: FileCheck2 },
+  { title: "Review draft", detail: "Check the saved draft before this prototype ends.", icon: Layers3 },
 ] as const;
 
 export const services = [
-  { title: "Gang sheet setup", detail: "Clean nesting and spacing for efficient production.", icon: Boxes },
-  { title: "Artwork cleanup", detail: "Practical file preparation for sharper transfers.", icon: Scissors },
-  { title: "Apparel application", detail: "Consistent placement and pressing for finished goods.", icon: Shirt },
+  { title: "Print-ready gang sheets", detail: "Upload a completed arrangement at its intended size.", icon: Layers3 },
+  { title: "Individual design arrangement", detail: "Provide separate files, sizes, and quantities for later review.", icon: Layers3 },
+  { title: "Requested artwork changes", detail: "Describe changes for each design without implying approval or a fee.", icon: FileCheck2 },
 ] as const;
 
 export function getProcessStepNumbers() {

@@ -1,119 +1,121 @@
 import { describe, expect, it } from "vitest";
-import { MAX_DYNAMIC_ROWS } from "../lib/order-draft/constants";
+import { MAX_DYNAMIC_ROWS, ORDER_ROUTE_VALUES } from "../lib/order-draft/constants";
 import { getEarliestIncompleteStep, getGuardRedirect, parseOrderRouteQuery } from "../lib/order-draft/navigation";
-import {
-  fullApparelConfigurationSchema,
-  gangSheetConfigurationSchema,
-  orderConfigurationSchema,
-  separateArtworkConfigurationSchema,
-  transfersBySizeConfigurationSchema,
-} from "../lib/order-draft/schemas";
+import { gangSheetConfigurationSchema, individualDesignsConfigurationSchema, individualDesignsFormSchema, orderConfigurationSchema } from "../lib/order-draft/schemas";
 import { createOrderDraftStore } from "../lib/order-draft/store";
 import { formatConfigurationSummary } from "../lib/order-draft/summary";
-import type { WorkingOrderConfiguration } from "../lib/order-draft/types";
+import { migrateLegacyRoute } from "../lib/order-draft/legacy-migration";
+import { pruneArtworkConfiguration, rebindArtworkConfiguration } from "../lib/order-draft/artwork-configuration";
+import type { IndividualDesignsConfiguration, WorkingOrderConfiguration } from "../lib/order-draft/types";
 
+const artworkA = "00000000-0000-4000-8000-000000000001";
+const artworkB = "00000000-0000-4000-8000-000000000002";
 const gangSheet = { route: "gang-sheet" as const, sheetCount: 2, finishedWidth: 22, finishedLength: 36, notes: "Local launch" };
+const individual: IndividualDesignsConfiguration = {
+  route: "individual-designs",
+  designs: [{ artworkId: artworkA, sizes: [
+    { id: "size-width", method: "width", width: 11, quantity: 10 },
+    { id: "size-height", method: "height", height: 8, quantity: 4 },
+    { id: "size-original", method: "original", quantity: 2 },
+  ], wantsChanges: true, changeInstructions: "Remove the background." }],
+  notes: "",
+};
 
-describe("order route query parsing", () => {
-  it("accepts only approved route slugs", () => {
-    expect(parseOrderRouteQuery("separate-artwork")).toBe("separate-artwork");
-    expect(parseOrderRouteQuery("checkout")).toBeNull();
-    expect(parseOrderRouteQuery(["gang-sheet"])).toBeNull();
-    expect(parseOrderRouteQuery(undefined)).toBeNull();
+describe("two-route product model", () => {
+  it("exposes exactly two active routes and rejects legacy routes", () => {
+    expect(ORDER_ROUTE_VALUES).toEqual(["gang-sheet", "individual-designs"]);
+    expect(parseOrderRouteQuery("individual-designs")).toBe("individual-designs");
+    for (const legacy of ["separate-artwork", "transfers-by-size", "full-apparel"]) expect(parseOrderRouteQuery(legacy)).toBeNull();
+  });
+
+  it("maps historical routes deterministically for the SQL migration", () => {
+    expect(migrateLegacyRoute("gang-sheet")).toBe("gang-sheet");
+    expect(migrateLegacyRoute("separate-artwork")).toBe("individual-designs");
+    expect(migrateLegacyRoute("transfers-by-size")).toBe("individual-designs");
+    expect(migrateLegacyRoute("full-apparel")).toBe("individual-designs");
   });
 });
 
-describe("route-specific configuration schemas", () => {
-  it("validates print-ready gang sheets", () => {
+describe("route configuration schemas", () => {
+  it("keeps gang-sheet configuration valid and bounded", () => {
     expect(gangSheetConfigurationSchema.safeParse(gangSheet).success).toBe(true);
     expect(gangSheetConfigurationSchema.safeParse({ ...gangSheet, sheetCount: 1.5 }).success).toBe(false);
     expect(gangSheetConfigurationSchema.safeParse({ ...gangSheet, finishedWidth: 0 }).success).toBe(false);
   });
 
-  it("validates separate artwork rows and unique stable IDs", () => {
-    const valid = { route: "separate-artwork" as const, designs: [{ id: "design-a", label: "Front", width: 11, quantity: 10 }], notes: "" };
-    expect(separateArtworkConfigurationSchema.safeParse(valid).success).toBe(true);
-    expect(separateArtworkConfigurationSchema.safeParse({ ...valid, designs: [] }).success).toBe(false);
-    expect(separateArtworkConfigurationSchema.safeParse({ ...valid, designs: [valid.designs[0], { ...valid.designs[0], label: "Back" }] }).success).toBe(false);
-    expect(separateArtworkConfigurationSchema.safeParse({ ...valid, designs: Array.from({ length: MAX_DYNAMIC_ROWS + 1 }, (_, index) => ({ id: `row-${index}`, label: `Design ${index}`, width: 1, quantity: 1 })) }).success).toBe(false);
+  it("accepts multiple designs and multiple mutually exclusive size variants", () => {
+    const multiple = { ...individual, designs: [...individual.designs, { ...individual.designs[0], artworkId: artworkB }] };
+    expect(individualDesignsConfigurationSchema.safeParse(multiple).success).toBe(true);
+    expect(orderConfigurationSchema.safeParse(multiple).success).toBe(true);
   });
 
-  it("validates transfer size rows", () => {
-    const valid = { route: "transfers-by-size" as const, designLabel: "Club mark", sizes: [{ id: "size-a", width: 8, quantity: 12 }], notes: "" };
-    expect(transfersBySizeConfigurationSchema.safeParse(valid).success).toBe(true);
-    expect(transfersBySizeConfigurationSchema.safeParse({ ...valid, sizes: [{ ...valid.sizes[0], quantity: 2.5 }] }).success).toBe(false);
-    expect(transfersBySizeConfigurationSchema.safeParse({ ...valid, designLabel: "" }).success).toBe(false);
+  it("rejects invalid sizing combinations, quantities, and duplicate identities", () => {
+    const base = individual.designs[0];
+    expect(individualDesignsConfigurationSchema.safeParse({ ...individual, designs: [{ ...base, sizes: [{ id: "x", method: "width", width: 5, height: 6, quantity: 1 }] }] }).success).toBe(false);
+    expect(individualDesignsConfigurationSchema.safeParse({ ...individual, designs: [{ ...base, sizes: [{ id: "x", method: "height", height: 5, width: 6, quantity: 1 }] }] }).success).toBe(false);
+    expect(individualDesignsConfigurationSchema.safeParse({ ...individual, designs: [{ ...base, sizes: [{ id: "x", method: "original", width: 5, quantity: 1 }] }] }).success).toBe(false);
+    expect(individualDesignsConfigurationSchema.safeParse({ ...individual, designs: [{ ...base, sizes: [{ id: "x", method: "width", width: 5, quantity: 0 }] }] }).success).toBe(false);
+    expect(individualDesignsConfigurationSchema.safeParse({ ...individual, designs: [{ ...base, sizes: Array.from({ length: MAX_DYNAMIC_ROWS + 1 }, (_, i) => ({ id: `x-${i}`, method: "original" as const, quantity: 1 })) }] }).success).toBe(false);
+    expect(individualDesignsConfigurationSchema.safeParse({ ...individual, designs: [base, base] }).success).toBe(false);
   });
 
-  it("validates full apparel requirements", () => {
-    const valid = { route: "full-apparel" as const, garmentSource: "customer-supplies" as const, projectType: "t-shirts" as const, garmentQuantity: 24, printLocations: ["front" as const], notes: "" };
-    expect(fullApparelConfigurationSchema.safeParse(valid).success).toBe(true);
-    expect(fullApparelConfigurationSchema.safeParse({ ...valid, printLocations: [] }).success).toBe(false);
-    expect(fullApparelConfigurationSchema.safeParse({ ...valid, garmentQuantity: -1 }).success).toBe(false);
-    expect(orderConfigurationSchema.safeParse(valid).success).toBe(true);
+  it("requires meaningful instructions only when changes are requested", () => {
+    expect(individualDesignsConfigurationSchema.safeParse({ ...individual, designs: [{ ...individual.designs[0], changeInstructions: "   " }] }).success).toBe(false);
+    expect(individualDesignsConfigurationSchema.safeParse({ ...individual, designs: [{ ...individual.designs[0], wantsChanges: false, changeInstructions: "crop" }] }).success).toBe(false);
+    expect(individualDesignsConfigurationSchema.safeParse({ ...individual, designs: [{ ...individual.designs[0], wantsChanges: false, changeInstructions: "" }] }).success).toBe(true);
+  });
+
+  it("preserves incomplete working values and transforms valid form values", () => {
+    const working = { route: "individual-designs", designs: [{ artworkId: artworkA, sizes: [{ id: "x", method: "", dimension: "", quantity: "" }], wantsChanges: "", changeInstructions: "" }], notes: "" };
+    expect(individualDesignsFormSchema.safeParse(working).success).toBe(false);
+    const valid = { ...working, designs: [{ ...working.designs[0], sizes: [{ id: "x", method: "height", dimension: "8.5", quantity: "3" }], wantsChanges: "no" }] };
+    expect(individualDesignsFormSchema.parse(valid).designs[0].sizes[0]).toEqual({ id: "x", method: "height", height: 8.5, quantity: 3 });
+  });
+});
+
+describe("artwork-linked synchronization", () => {
+  it("prunes deleted artwork and rebinds replacements without losing details", () => {
+    const multiple = { ...individual, designs: [...individual.designs, { ...individual.designs[0], artworkId: artworkB }] };
+    expect((pruneArtworkConfiguration(multiple, artworkA) as IndividualDesignsConfiguration).designs.map((design) => design.artworkId)).toEqual([artworkB]);
+    const rebound = rebindArtworkConfiguration(individual, artworkA, artworkB) as IndividualDesignsConfiguration;
+    expect(rebound.designs[0]).toMatchObject({ artworkId: artworkB, wantsChanges: true, changeInstructions: "Remove the background." });
+    expect(rebound.designs[0].sizes).toEqual(individual.designs[0].sizes);
   });
 });
 
 describe("draft navigation and state", () => {
-  it("finds the earliest incomplete step and only guards forward access", () => {
+  it("guards forward access and clears incompatible route state", () => {
     const empty = { selectedRoute: null, startingPointConfirmed: false, artworkAcknowledged: false, configuration: null, lastCompletedStep: 0 as const };
     expect(getEarliestIncompleteStep(empty)).toBe("start");
     expect(getGuardRedirect("review", empty)).toBe("/order/start");
-    const preselected = { ...empty, selectedRoute: "gang-sheet" as const };
-    expect(getEarliestIncompleteStep(preselected)).toBe("start");
-    const selected = { ...preselected, startingPointConfirmed: true, lastCompletedStep: 1 as const };
-    expect(getEarliestIncompleteStep(selected)).toBe("artwork");
-    expect(getGuardRedirect("start", selected)).toBeNull();
-    const acknowledged = { ...selected, artworkAcknowledged: true, lastCompletedStep: 2 as const };
-    expect(getGuardRedirect("review", acknowledged)).toBe("/order/configure");
-  });
-
-  it("clears incompatible configuration when the route changes and resets fully", () => {
     const store = createOrderDraftStore();
     store.getState().selectRoute("gang-sheet");
     store.getState().confirmStartingPoint();
     store.getState().acknowledgeArtwork();
-    store.getState().saveWorkingConfiguration({ route: "gang-sheet", sheetCount: "", finishedWidth: "22", finishedLength: "36", notes: "In progress" });
     store.getState().saveConfiguration(gangSheet);
-    expect(store.getState().configuration).toEqual(gangSheet);
-    expect(store.getState().workingConfiguration).toEqual({ route: "gang-sheet", sheetCount: "2", finishedWidth: "22", finishedLength: "36", notes: "Local launch" });
-    store.getState().selectRoute("separate-artwork");
-    expect(store.getState()).toMatchObject({ selectedRoute: "separate-artwork", startingPointConfirmed: false, artworkAcknowledged: false, workingConfiguration: null, configuration: null, lastCompletedStep: 0 });
-    store.getState().resetDraft();
-    expect(store.getState()).toMatchObject({ selectedRoute: null, startingPointConfirmed: false, artworkAcknowledged: false, workingConfiguration: null, configuration: null, lastCompletedStep: 0 });
+    store.getState().selectRoute("individual-designs");
+    expect(store.getState()).toMatchObject({ selectedRoute: "individual-designs", startingPointConfirmed: false, artworkAcknowledged: false, workingConfiguration: null, configuration: null, lastCompletedStep: 0 });
   });
 
-  it("stores a discriminated working configuration without completing Project Details", () => {
+  it("stores incomplete artwork-linked working state without completing details", () => {
     const store = createOrderDraftStore();
-    const working: WorkingOrderConfiguration = {
-      route: "separate-artwork",
-      designs: [{ id: "design-working", label: "", width: "11.5", quantity: "" }],
-      notes: "Still editing",
-    };
-    store.getState().selectRoute("separate-artwork");
+    const working: WorkingOrderConfiguration = { route: "individual-designs", designs: [{ artworkId: artworkA, sizes: [{ id: "size", method: "", dimension: "", quantity: "" }], wantsChanges: "", changeInstructions: "" }], notes: "editing" };
+    store.getState().selectRoute("individual-designs");
     store.getState().confirmStartingPoint();
     store.getState().acknowledgeArtwork();
     store.getState().saveWorkingConfiguration(working);
-
-    expect(store.getState().workingConfiguration).toEqual(working);
-    expect(store.getState().workingConfiguration?.route).toBe("separate-artwork");
     expect(store.getState().configuration).toBeNull();
-    expect(store.getState().lastCompletedStep).toBe(2);
     expect(getGuardRedirect("review", store.getState())).toBe("/order/configure");
-
-    const completed = { route: "separate-artwork" as const, designs: [{ id: "design-working", label: "Front", width: 11.5, quantity: 24 }], notes: "Ready" };
-    store.getState().saveConfiguration(completed);
-    expect(store.getState().configuration).toEqual(completed);
-    expect(store.getState().lastCompletedStep).toBe(3);
+    store.getState().saveConfiguration(individual);
     expect(getGuardRedirect("review", store.getState())).toBeNull();
   });
 });
 
 describe("review summary formatting", () => {
-  it("formats route configuration without pricing or totals", () => {
-    const summary = formatConfigurationSummary(gangSheet);
-    expect(summary[0].items).toContainEqual({ label: "Finished width", value: "22 in" });
+  it("identifies designs by original filename without pricing", () => {
+    const summary = formatConfigurationSummary(individual, [{ id: artworkA, originalName: "front-logo.png" } as never]);
+    expect(summary[0].title).toBe("front-logo.png");
+    expect(JSON.stringify(summary)).toContain("Set by width: 11 in");
     expect(JSON.stringify(summary).toLowerCase()).not.toContain("price");
-    expect(JSON.stringify(summary).toLowerCase()).not.toContain("total");
   });
 });

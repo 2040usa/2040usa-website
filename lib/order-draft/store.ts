@@ -60,33 +60,36 @@ export function createOrderDraftStore() {
       ? { ...state, artworkAcknowledged: true, lastCompletedStep: Math.max(state.lastCompletedStep, 2) as 2 | 3 }
       : state),
     saveWorkingConfiguration: (workingConfiguration) => set((state) => state.selectedRoute === workingConfiguration.route
-      ? { workingConfiguration }
+      ? { workingConfiguration, configuration: null, lastCompletedStep: Math.min(state.lastCompletedStep, 2) as 0 | 1 | 2 }
       : state),
     saveConfiguration: (configuration) => set((state) => state.selectedRoute === configuration.route
       ? { configuration, workingConfiguration: toWorkingConfiguration(configuration), lastCompletedStep: 3 }
       : state),
     resetDraft: () => set((state) => ({ ...initialOrderDraft, serverDraftId: state.serverDraftId, serverVersion: state.serverVersion, hydrationState: "ready", saveState: "idle", lastSavedAt: null, persistenceError: null })),
-    hydrateDurableDraft: (draft) => set(draft ? {
-      selectedRoute: draft.selectedRoute,
-      startingPointConfirmed: draft.startingPointConfirmed,
-      artworkAcknowledged: draft.artworkAcknowledged,
-      workingConfiguration: draft.workingConfiguration,
-      configuration: draft.configuration,
-      lastCompletedStep: draft.lastCompletedStep,
-      serverDraftId: draft.id,
-      serverVersion: draft.version,
-      hydrationState: "ready",
-      saveState: "saved",
-      lastSavedAt: draft.updatedAt,
-      persistenceError: null,
-    } : {
-      ...initialOrderDraft,
-      serverDraftId: null,
-      serverVersion: null,
-      hydrationState: "ready",
-      saveState: "idle",
-      lastSavedAt: null,
-      persistenceError: null,
+    hydrateDurableDraft: (draft) => set((state) => {
+      if (draft && state.serverDraftId === draft.id && state.serverVersion !== null && draft.version < state.serverVersion) return state;
+      return draft ? {
+        selectedRoute: draft.selectedRoute,
+        startingPointConfirmed: draft.startingPointConfirmed,
+        artworkAcknowledged: draft.artworkAcknowledged,
+        workingConfiguration: draft.workingConfiguration,
+        configuration: draft.configuration,
+        lastCompletedStep: draft.lastCompletedStep,
+        serverDraftId: draft.id,
+        serverVersion: draft.version,
+        hydrationState: "ready",
+        saveState: "saved",
+        lastSavedAt: draft.updatedAt,
+        persistenceError: null,
+      } : {
+        ...initialOrderDraft,
+        serverDraftId: null,
+        serverVersion: null,
+        hydrationState: "ready",
+        saveState: "idle",
+        lastSavedAt: null,
+        persistenceError: null,
+      };
     }),
     beginHydration: () => set({ hydrationState: "initializing", persistenceError: null }),
     markHydrationError: (persistenceError) => set({ hydrationState: "error", saveState: "error", persistenceError }),

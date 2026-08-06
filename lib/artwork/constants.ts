@@ -26,16 +26,12 @@ export const ARTWORK_ACCEPT = Object.entries(ARTWORK_MIME_BY_EXTENSION)
 
 export const ARTWORK_POLICY_BY_ROUTE: Record<OrderRoute, OrderRouteArtworkPolicy> = {
   "gang-sheet": { purpose: "gang-sheet-file", minimumUploaded: 1, maximumActive: MAX_ARTWORK_FILES },
-  "separate-artwork": { purpose: "individual-design", minimumUploaded: 1, maximumActive: MAX_ARTWORK_FILES },
-  "transfers-by-size": { purpose: "size-based-design", minimumUploaded: 1, maximumActive: 1 },
-  "full-apparel": { purpose: "apparel-artwork-reference", minimumUploaded: 1, maximumActive: MAX_ARTWORK_FILES },
+  "individual-designs": { purpose: "individual-design", minimumUploaded: 1, maximumActive: MAX_ARTWORK_FILES },
 };
 
 export const ARTWORK_PURPOSE_VALUES = [
   "gang-sheet-file",
   "individual-design",
-  "size-based-design",
-  "apparel-artwork-reference",
 ] as const satisfies readonly ArtworkPurpose[];
 
 export const ARTWORK_FAILURE_CODES = [

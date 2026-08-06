@@ -1,10 +1,10 @@
-import { Building2, FileSearch2, MapPin, RefreshCw } from "lucide-react";
+import { Building2, FileSearch2, Layers3, Upload } from "lucide-react";
 
 const capabilities = [
   { label: "Printed in Downtown LA", icon: Building2 },
-  { label: "Pickup coordination", icon: MapPin },
-  { label: "Artwork check step", icon: FileSearch2 },
-  { label: "Built for repeat runs", icon: RefreshCw },
+  { label: "Private resumable uploads", icon: Upload },
+  { label: "Two gang-sheet routes", icon: Layers3 },
+  { label: "Artwork-linked sizing", icon: FileSearch2 },
 ] as const;
 
 export function CapabilityStrip() {

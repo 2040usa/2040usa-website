@@ -4,18 +4,15 @@ import { getProcessStepNumbers, processSteps, workflowOptions } from "../lib/hom
 describe("homepage production content", () => {
   it("keeps the approved six-step production sequence", () => {
     expect(processSteps.map((step) => step.title)).toEqual([
+      "Choose a route",
       "Upload",
-      "Artwork check",
-      "Print",
-      "Cure",
-      "Quality check",
-      "Pickup",
+      "Project details",
+      "Review draft",
     ]);
-    expect(getProcessStepNumbers()).toEqual(["01", "02", "03", "04", "05", "06"]);
+    expect(getProcessStepNumbers()).toEqual(["01", "02", "03", "04"]);
   });
 
   it("offers every approved starting workflow", () => {
-    expect(workflowOptions).toHaveLength(4);
-    expect(workflowOptions.map((option) => option.title)).toContain("Full apparel project");
+    expect(workflowOptions.map((option) => option.title)).toEqual(["Print-Ready Gang Sheet", "Individual Designs"]);
   });
 });

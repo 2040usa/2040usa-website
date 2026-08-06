@@ -8,7 +8,6 @@ import {
   ArtworkCleanupIncompleteError,
   ArtworkConflictError,
   ArtworkIdempotencyConflictError,
-  ArtworkQuotaError,
   ArtworkRecoveryError,
   acknowledgeReadyArtwork,
   artworkSnapshotForOwner,
@@ -20,7 +19,7 @@ import {
   reserveArtworkForOwner,
   prepareArtworkDeletion,
 } from "../../lib/database/artwork-repository";
-import { bootstrapActiveDraft, readDraftForOwner, updateDraftForOwner } from "../../lib/database/order-draft-repository";
+import { bootstrapActiveDraft, DraftArtworkConfigurationError, readDraftForOwner, updateDraftForOwner } from "../../lib/database/order-draft-repository";
 import { cleanupArtworkForOwner, reconcileArtworkForOwner } from "../../lib/server/artwork-service";
 
 const pngBytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -320,7 +319,7 @@ export async function runHostedArtworkTests(input: { pool: Pool; userA: HostedOw
         draftId: concurrentDraft.id,
         ownerUserId: userA.userId,
         expectedDraftVersion: preparedConcurrent!.draft.version,
-        selectedRoute: "separate-artwork",
+        selectedRoute: "individual-designs",
       }),
       ArtworkCleanupIncompleteError,
       "A reservation inserted after preparation prevents route finalization.",
@@ -332,9 +331,9 @@ export async function runHostedArtworkTests(input: { pool: Pool; userA: HostedOw
       draftId: concurrentDraft.id,
       ownerUserId: userA.userId,
       expectedDraftVersion: lateCleanup!.draft!.version,
-      selectedRoute: "separate-artwork",
+      selectedRoute: "individual-designs",
     });
-    assert.equal(finalizedRoute?.selectedRoute, "separate-artwork");
+    assert.equal(finalizedRoute?.selectedRoute, "individual-designs");
 
     const resetReservation = await reserveArtworkForOwner({
       ...reservation(userA.userId, concurrentDraft.id, "late-reset-reservation"),
@@ -357,18 +356,50 @@ export async function runHostedArtworkTests(input: { pool: Pool; userA: HostedOw
     assert.equal(finalizedReset?.selectedRoute, null);
 
     await pool.query("delete from public.order_drafts where owner_user_id = $1", [userA.userId]);
-    const transferDraft = await bootstrapActiveDraft(userA.userId, "transfers-by-size");
-    const transferRequest = { ...reservation(userA.userId, transferDraft.id, "transfer"), purpose: "size-based-design" as const };
+    const transferDraft = await bootstrapActiveDraft(userA.userId, "individual-designs");
+    const transferRequest = { ...reservation(userA.userId, transferDraft.id, "individual"), purpose: "individual-design" as const };
     const transferFirst = await reserveArtworkForOwner(transferRequest);
     assert.ok(transferFirst);
-    await assert.rejects(
-      () => reserveArtworkForOwner({ ...transferRequest, clientFingerprint: fingerprint("transfer-2"), idempotencyKey: randomUUID() }),
-      ArtworkQuotaError,
-      "Transfers by Size must reject a second active reservation without an explicit replacement target.",
-    );
+    const secondDesign = await reserveArtworkForOwner({ ...transferRequest, clientFingerprint: fingerprint("individual-2"), idempotencyKey: randomUUID() });
+    assert.ok(secondDesign, "Individual Designs accepts multiple active artwork records.");
     paths.add(transferFirst.storagePath);
     assert.equal((await userA.client.storage.from(ARTWORK_BUCKET).upload(transferFirst.storagePath, pngBytes, { contentType: "image/png", upsert: false })).error, null);
     await reconcileArtworkForOwner(transferDraft.id, userA.userId, transferDraft.version);
+    paths.add(secondDesign.storagePath);
+    assert.equal((await userA.client.storage.from(ARTWORK_BUCKET).upload(secondDesign.storagePath, pngBytes, { contentType: "image/png", upsert: false })).error, null);
+    let individualDraft = (await readDraftForOwner(transferDraft.id, userA.userId))!;
+    await reconcileArtworkForOwner(transferDraft.id, userA.userId, individualDraft.version);
+    individualDraft = (await readDraftForOwner(transferDraft.id, userA.userId))!;
+    const individualConfigured = await updateDraftForOwner({
+      id: individualDraft.id,
+      ownerUserId: userA.userId,
+      expectedVersion: individualDraft.version,
+      selectedRoute: "individual-designs",
+      startingPointConfirmed: true,
+      artworkAcknowledged: true,
+      workingConfiguration: individualDraft.workingConfiguration,
+      configuration: {
+        route: "individual-designs",
+        designs: [transferFirst.record.id, secondDesign.record.id].map((artworkId, index) => ({
+          artworkId,
+          sizes: [{ id: `hosted-size-${index}`, method: "width", width: 10 + index, quantity: 2 }],
+          wantsChanges: index === 0,
+          changeInstructions: index === 0 ? "Preserve through replacement." : "",
+        })),
+        notes: "",
+      },
+    });
+    assert.ok(individualConfigured?.configuration);
+    await assert.rejects(() => updateDraftForOwner({
+      id: individualConfigured!.id,
+      ownerUserId: userA.userId,
+      expectedVersion: individualConfigured!.version,
+      selectedRoute: "individual-designs",
+      startingPointConfirmed: true,
+      artworkAcknowledged: true,
+      workingConfiguration: individualConfigured!.workingConfiguration,
+      configuration: { route: "individual-designs", designs: [], notes: "" },
+    }), DraftArtworkConfigurationError, "Completed configuration cannot omit uploaded canonical artwork.");
     const replacement = await reserveArtworkForOwner({
       ...transferRequest,
       clientFingerprint: fingerprint("transfer-replacement"),
@@ -379,7 +410,13 @@ export async function runHostedArtworkTests(input: { pool: Pool; userA: HostedOw
     assert.notEqual(replacement.storagePath, transferFirst.storagePath);
     paths.add(replacement.storagePath);
     assert.equal((await userA.client.storage.from(ARTWORK_BUCKET).upload(replacement.storagePath, pngBytes, { contentType: "image/png", upsert: false })).error, null);
-    await reconcileArtworkForOwner(transferDraft.id, userA.userId, transferDraft.version);
+    individualDraft = (await readDraftForOwner(transferDraft.id, userA.userId))!;
+    await reconcileArtworkForOwner(transferDraft.id, userA.userId, individualDraft.version);
+    individualDraft = (await readDraftForOwner(transferDraft.id, userA.userId))!;
+    const rebound = individualDraft.configuration?.route === "individual-designs" ? individualDraft.configuration : null;
+    assert.ok(rebound);
+    assert.equal(rebound.designs.some((design) => design.artworkId === transferFirst.record.id), false);
+    assert.equal(rebound.designs.find((design) => design.artworkId === replacement.record.id)?.changeInstructions, "Preserve through replacement.");
     const beforeReplacementDelete = await artworkSnapshotForOwner(transferDraft.id, userA.userId);
     const old = beforeReplacementDelete.artwork.find((record) => record.id === transferFirst.record.id)!;
     const preparedReplacementDelete = await prepareArtworkDeletion({
@@ -387,7 +424,7 @@ export async function runHostedArtworkTests(input: { pool: Pool; userA: HostedOw
       draftId: transferDraft.id,
       ownerUserId: userA.userId,
       expectedArtworkVersion: old.version,
-      expectedDraftVersion: transferDraft.version,
+      expectedDraftVersion: individualDraft.version,
     });
     assert.ok(preparedReplacementDelete);
     const failedReplacementSnapshot = await artworkSnapshotForOwner(transferDraft.id, userA.userId);
@@ -397,7 +434,7 @@ export async function runHostedArtworkTests(input: { pool: Pool; userA: HostedOw
     await removeIfPresent(userA.client, transferFirst.storagePath); paths.delete(transferFirst.storagePath);
     assert.equal(await deleteArtworkRowForOwner(old.id, transferDraft.id, userA.userId), true);
     const finishedReplacement = await artworkSnapshotForOwner(transferDraft.id, userA.userId);
-    assert.deepEqual(finishedReplacement.artwork.map((record) => record.id), [replacement.record.id]);
+    assert.deepEqual(finishedReplacement.artwork.map((record) => record.id), [secondDesign.record.id, replacement.record.id]);
     assert.equal(finishedReplacement.readiness.ready, true);
   } finally {
     for (const path of paths) await removeIfPresent(userA.client, path).catch(() => undefined);

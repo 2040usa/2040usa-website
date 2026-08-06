@@ -2,7 +2,7 @@ import type { OrderRoute } from "@/lib/order-draft/types";
 
 export type ArtworkExtension = "png" | "jpg" | "jpeg" | "webp" | "pdf" | "ai" | "psd";
 export type ArtworkMimeType = "image/png" | "image/jpeg" | "image/webp" | "application/pdf" | "application/postscript" | "image/vnd.adobe.photoshop";
-export type ArtworkPurpose = "gang-sheet-file" | "individual-design" | "size-based-design" | "apparel-artwork-reference";
+export type ArtworkPurpose = "gang-sheet-file" | "individual-design";
 export type ArtworkStatus = "pending" | "uploaded" | "failed" | "deleting";
 export type ArtworkFailureCode = "upload_failed" | "upload_expired" | "object_missing" | "size_mismatch" | "mime_mismatch" | "verification_failed" | "deletion_failed";
 

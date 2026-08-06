@@ -8,9 +8,7 @@ export function calculateArtworkReadiness(route: OrderRoute | null, records: rea
   const compatible = records.filter((record) => record.route === route && record.purpose === policy.purpose);
   const active = compatible.filter((record) => record.status !== "deleting");
   const uploaded = active.filter((record) => record.status === "uploaded");
-  const ready = route === "transfers-by-size"
-    ? uploaded.length === 1
-    : uploaded.length >= policy.minimumUploaded;
+  const ready = uploaded.length >= policy.minimumUploaded;
   return {
     ready,
     uploadedCount: uploaded.length,

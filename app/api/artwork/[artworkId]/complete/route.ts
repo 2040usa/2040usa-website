@@ -1,7 +1,7 @@
 import { apiError, getVerifiedOwner, ownerErrorResponse, privateJson } from "@/lib/api/order-drafts";
 import { artworkApiFailure } from "@/lib/api/artwork";
 import { artworkIdentityRequestSchema } from "@/lib/artwork/schemas";
-import { artworkSnapshotForOwner, inspectArtworkObject, markArtworkFailed, markArtworkUploaded, readArtworkWithStorageIdentity, storageObjectMetadata } from "@/lib/database/artwork-repository";
+import { artworkSnapshotForOwner, inspectArtworkObject, markArtworkFailed, markArtworkUploaded, readArtworkWithStorageIdentity, rebindReplacementConfigurationForOwner, storageObjectMetadata, synchronizeUploadedArtworkConfigurationForOwner } from "@/lib/database/artwork-repository";
 import { isSameOriginRequest, readJsonBody } from "@/lib/http/security";
 import { uuidSchema } from "@/lib/order-draft/durable";
 
@@ -15,7 +15,10 @@ export async function POST(request: Request, context: { params: Promise<{ artwor
     const { draftId } = artworkIdentityRequestSchema.parse(await readJsonBody(request));
     const artwork = await readArtworkWithStorageIdentity(artworkId.data, draftId, owner.ownerUserId);
     if (!artwork) return apiError(404, "NOT_FOUND", "Artwork not found.");
-    if (artwork.status === "uploaded") return privateJson(await artworkSnapshotForOwner(draftId, owner.ownerUserId));
+    if (artwork.status === "uploaded") {
+      await rebindReplacementConfigurationForOwner({ artworkId: artwork.id, draftId, ownerUserId: owner.ownerUserId });
+      return privateJson({ ...(await artworkSnapshotForOwner(draftId, owner.ownerUserId)), draft: await synchronizeUploadedArtworkConfigurationForOwner({ artworkId: artwork.id, draftId, ownerUserId: owner.ownerUserId }) });
+    }
     const object = await inspectArtworkObject(artwork.storagePath);
     if (!object || object.owner_id !== owner.ownerUserId) return apiError(409, "UPLOAD_VERIFICATION_FAILED", "The uploaded object could not be verified.");
     const metadata = storageObjectMetadata(object);
@@ -25,7 +28,8 @@ export async function POST(request: Request, context: { params: Promise<{ artwor
       return apiError(409, "UPLOAD_VERIFICATION_FAILED", "The uploaded object metadata did not match the reservation.");
     }
     await markArtworkUploaded({ id: artwork.id, draftId, ownerUserId: owner.ownerUserId, expectedVersion: artwork.version, size: metadata.size, mimeType: metadata.mimeType });
-    return privateJson(await artworkSnapshotForOwner(draftId, owner.ownerUserId));
+    await rebindReplacementConfigurationForOwner({ artworkId: artwork.id, draftId, ownerUserId: owner.ownerUserId });
+    return privateJson({ ...(await artworkSnapshotForOwner(draftId, owner.ownerUserId)), draft: await synchronizeUploadedArtworkConfigurationForOwner({ artworkId: artwork.id, draftId, ownerUserId: owner.ownerUserId }) });
   } catch (error) {
     return artworkApiFailure(error);
   }

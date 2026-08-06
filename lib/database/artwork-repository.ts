@@ -1,4 +1,5 @@
 import "server-only";
+import { isDeepStrictEqual } from "node:util";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/database/prisma";
 import {
@@ -15,6 +16,7 @@ import type { ArtworkFailureCode, CanonicalArtworkRecord } from "@/lib/artwork/t
 import type { ReserveArtworkRequest } from "@/lib/artwork/schemas";
 import type { OrderRoute } from "@/lib/order-draft/types";
 import { databaseDraftToCanonical } from "@/lib/order-draft/durable";
+import { addWorkingArtwork, pruneArtworkConfiguration, rebindArtworkConfiguration } from "@/lib/order-draft/artwork-configuration";
 
 export class ArtworkConflictError extends Error {}
 export class ArtworkQuotaError extends Error {}
@@ -182,10 +184,9 @@ export async function reserveArtworkForOwner(input: ReserveArtworkRequest & { dr
       _sum: { declaredSizeBytes: true },
     });
     if (totals._count >= MAX_ARTWORK_FILES || Number(totals._sum.declaredSizeBytes ?? BigInt(0)) + input.declaredSizeBytes > MAX_ARTWORK_DRAFT_BYTES) throw new ArtworkQuotaError();
-    if (route === "transfers-by-size" && totals._count > 0) {
-      if (!input.replacementForArtworkId) throw new ArtworkQuotaError();
+    if (input.replacementForArtworkId) {
       const replacementTarget = await transaction.artworkFile.findFirst({
-        where: { id: input.replacementForArtworkId, draftId: input.draftId, ownerUserId: input.ownerUserId, status: "uploaded", route },
+        where: { id: input.replacementForArtworkId, draftId: input.draftId, ownerUserId: input.ownerUserId, status: "uploaded", route, purpose: input.purpose },
       });
       const existingReplacement = await transaction.artworkFile.findFirst({
         where: { draftId: input.draftId, ownerUserId: input.ownerUserId, replacementForId: input.replacementForArtworkId, status: { in: ["pending", "failed"] } },
@@ -376,10 +377,19 @@ export async function prepareArtworkDeletion(input: {
     });
     const readiness = calculateArtworkReadiness(draft.selectedRoute as OrderRoute | null, remaining.map(databaseArtworkToCanonical));
     const revokeProgress = !readiness.ready && (draft.artworkAcknowledged || draft.configuration !== null);
-    const preparedDraft = revokeProgress
+    const prunedWorking = draft.selectedRoute === "individual-designs" ? pruneArtworkConfiguration(draft.workingConfiguration, artwork.id) : draft.workingConfiguration;
+    const prunedCompleted = draft.selectedRoute === "individual-designs" ? pruneArtworkConfiguration(draft.configuration, artwork.id) : draft.configuration;
+    const configurationChanged = draft.selectedRoute === "individual-designs"
+      && (!isDeepStrictEqual(prunedWorking, draft.workingConfiguration) || !isDeepStrictEqual(prunedCompleted, draft.configuration));
+    const preparedDraft = revokeProgress || configurationChanged
       ? await transaction.orderDraft.update({
           where: { id: draft.id },
-          data: { artworkAcknowledged: false, configuration: Prisma.DbNull, version: { increment: 1 } },
+          data: {
+            artworkAcknowledged: revokeProgress ? false : draft.artworkAcknowledged,
+            workingConfiguration: prunedWorking === null ? Prisma.DbNull : prunedWorking as Prisma.InputJsonValue,
+            configuration: revokeProgress || prunedCompleted === null ? Prisma.DbNull : prunedCompleted as Prisma.InputJsonValue,
+            version: { increment: 1 },
+          },
         })
       : draft;
     return {
@@ -387,6 +397,62 @@ export async function prepareArtworkDeletion(input: {
       cleanup: { id: deleting.id, version: deleting.version, storageBucket: deleting.storageBucket, storagePath: deleting.storagePath },
     };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function rebindReplacementConfigurationForOwner(input: { artworkId: string; draftId: string; ownerUserId: string }) {
+  return prisma.$transaction(async (transaction) => {
+    await transaction.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${input.draftId}, 0))`;
+    const artwork = await transaction.artworkFile.findFirst({
+      where: { id: input.artworkId, draftId: input.draftId, ownerUserId: input.ownerUserId, status: "uploaded" },
+    });
+    const draft = await transaction.orderDraft.findFirst({ where: { id: input.draftId, ownerUserId: input.ownerUserId, status: "active" } });
+    if (!artwork || !draft || !artwork.replacementForId || draft.selectedRoute !== "individual-designs") {
+      return draft ? databaseDraftToCanonical(draft) : null;
+    }
+    const workingConfiguration = rebindArtworkConfiguration(draft.workingConfiguration, artwork.replacementForId, artwork.id);
+    const configuration = rebindArtworkConfiguration(draft.configuration, artwork.replacementForId, artwork.id);
+    const changed = !isDeepStrictEqual(workingConfiguration, draft.workingConfiguration)
+      || !isDeepStrictEqual(configuration, draft.configuration);
+    if (!changed) return databaseDraftToCanonical(draft);
+    const updated = await transaction.orderDraft.update({
+      where: { id: draft.id },
+      data: {
+        workingConfiguration: workingConfiguration === null ? Prisma.DbNull : workingConfiguration as Prisma.InputJsonValue,
+        configuration: configuration === null ? Prisma.DbNull : configuration as Prisma.InputJsonValue,
+        version: { increment: 1 },
+      },
+    });
+    return databaseDraftToCanonical(updated);
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function synchronizeUploadedArtworkConfigurationForOwner(input: { artworkId: string; draftId: string; ownerUserId: string }) {
+  return prisma.$transaction(async (transaction) => {
+    await transaction.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${input.draftId}, 0))`;
+    const artwork = await transaction.artworkFile.findFirst({
+      where: { id: input.artworkId, draftId: input.draftId, ownerUserId: input.ownerUserId, route: "individual-designs", purpose: "individual-design", status: "uploaded" },
+    });
+    const draft = await transaction.orderDraft.findFirst({ where: { id: input.draftId, ownerUserId: input.ownerUserId, status: "active", selectedRoute: "individual-designs" } });
+    if (!artwork || !draft) return draft ? databaseDraftToCanonical(draft) : null;
+    const workingConfiguration = addWorkingArtwork(draft.workingConfiguration, artwork.id);
+    const completedIds = draft.configuration && typeof draft.configuration === "object" && "route" in draft.configuration
+      && draft.configuration.route === "individual-designs" && "designs" in draft.configuration && Array.isArray(draft.configuration.designs)
+      ? new Set(draft.configuration.designs.flatMap((design) => design && typeof design === "object" && "artworkId" in design && typeof design.artworkId === "string" ? [design.artworkId] : []))
+      : null;
+    const configuration = completedIds?.has(artwork.id) ? draft.configuration : null;
+    const changed = !isDeepStrictEqual(workingConfiguration, draft.workingConfiguration)
+      || !isDeepStrictEqual(configuration, draft.configuration);
+    if (!changed) return databaseDraftToCanonical(draft);
+    const updated = await transaction.orderDraft.update({
+      where: { id: draft.id },
+      data: {
+        workingConfiguration: workingConfiguration as Prisma.InputJsonValue,
+        configuration: configuration === null ? Prisma.DbNull : configuration as Prisma.InputJsonValue,
+        version: { increment: 1 },
+      },
+    });
+    return databaseDraftToCanonical(updated);
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 }
 
 export async function revokeArtworkProgressForOwner(input: { draftId: string; ownerUserId: string; expectedDraftVersion: number }) {

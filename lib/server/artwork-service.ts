@@ -13,6 +13,8 @@ import {
   revokeArtworkProgressForOwner,
   ArtworkConflictError,
   type PreparedArtworkCleanupRecord,
+  synchronizeUploadedArtworkConfigurationForOwner,
+  rebindReplacementConfigurationForOwner,
 } from "@/lib/database/artwork-repository";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -36,6 +38,8 @@ export async function reconcileArtworkForOwner(draftId: string, ownerUserId: str
       const failureCode = metadata.size !== record.declaredSizeBytes ? "size_mismatch" : metadata.mimeType !== record.mimeType ? "mime_mismatch" : null;
       if (!failureCode && metadata.size && metadata.mimeType) {
         await markArtworkUploaded({ id: record.id, draftId, ownerUserId, expectedVersion: record.version, size: metadata.size, mimeType: metadata.mimeType });
+        await rebindReplacementConfigurationForOwner({ artworkId: record.id, draftId, ownerUserId });
+        await synchronizeUploadedArtworkConfigurationForOwner({ artworkId: record.id, draftId, ownerUserId });
       } else {
         await markArtworkFailed({ id: record.id, draftId, ownerUserId, expectedVersion: record.version, failureCode: failureCode ?? "verification_failed" });
       }
@@ -48,14 +52,15 @@ export async function reconcileArtworkForOwner(draftId: string, ownerUserId: str
       await markArtworkFailed({ id: record.id, draftId, ownerUserId, expectedVersion: record.version, failureCode: "object_missing", allowUploaded: true });
       readinessRevoked = true;
     }
+    if (record.status === "uploaded" && object?.owner_id === ownerUserId) {
+      await rebindReplacementConfigurationForOwner({ artworkId: record.id, draftId, ownerUserId });
+      await synchronizeUploadedArtworkConfigurationForOwner({ artworkId: record.id, draftId, ownerUserId });
+    }
   }
 
   snapshot = await artworkSnapshotForOwner(draftId, ownerUserId);
   const draftBefore = await readDraftForOwner(draftId, ownerUserId);
   if (!draftBefore) return { ...snapshot, draft: null };
-  if (draftBefore.version !== submittedVersion) {
-    throw new ArtworkConflictError();
-  }
   const shouldRevoke = (draftBefore.artworkAcknowledged || draftBefore.configuration !== null)
     && (!snapshot.readiness.ready || readinessRevoked);
   const draft = shouldRevoke

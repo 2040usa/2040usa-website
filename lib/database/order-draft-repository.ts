@@ -5,6 +5,7 @@ import { databaseDraftToCanonical } from "@/lib/order-draft/durable";
 import type { CanonicalOrderDraft, OrderRoute } from "@/lib/order-draft/types";
 
 export class DraftConflictError extends Error {}
+export class DraftArtworkConfigurationError extends Error {}
 
 const jsonValue = (value: unknown) => value === null ? Prisma.DbNull : value as Prisma.InputJsonValue;
 
@@ -56,22 +57,42 @@ export async function updateDraftForOwner(input: {
   workingConfiguration: unknown;
   configuration: unknown;
 }) {
-  const result = await prisma.orderDraft.updateManyAndReturn({
-    where: { id: input.id, ownerUserId: input.ownerUserId, status: "active", version: input.expectedVersion },
-    data: {
-      selectedRoute: input.selectedRoute,
-      startingPointConfirmed: input.startingPointConfirmed,
-      artworkAcknowledged: input.artworkAcknowledged,
-      workingConfiguration: jsonValue(input.workingConfiguration),
-      configuration: jsonValue(input.configuration),
-      version: { increment: 1 },
-    },
-  });
-  if (result.length === 0) {
-    if (await readDraftForOwner(input.id, input.ownerUserId)) throw new DraftConflictError("Draft version conflict.");
-    return null;
-  }
-  return databaseDraftToCanonical(result[0]);
+  return prisma.$transaction(async (transaction) => {
+    await transaction.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${input.id}, 0))`;
+    const existing = await transaction.orderDraft.findFirst({ where: { id: input.id, ownerUserId: input.ownerUserId, status: "active" } });
+    if (!existing) return null;
+    if (existing.version !== input.expectedVersion) throw new DraftConflictError("Draft version conflict.");
+    if (input.selectedRoute === "individual-designs") {
+      const artwork = await transaction.artworkFile.findMany({
+        where: { draftId: input.id, ownerUserId: input.ownerUserId, route: "individual-designs", purpose: "individual-design", status: "uploaded" },
+        select: { id: true },
+      });
+      const canonicalIds = new Set(artwork.map((record) => record.id));
+      const working = input.workingConfiguration && typeof input.workingConfiguration === "object" && "route" in input.workingConfiguration && input.workingConfiguration.route === "individual-designs"
+        ? input.workingConfiguration as unknown as { designs: { artworkId: string }[] } : null;
+      if (working && working.designs.some((design) => !canonicalIds.has(design.artworkId))) throw new DraftArtworkConfigurationError("Working configuration references unavailable artwork.");
+      const completed = input.configuration && typeof input.configuration === "object" && "route" in input.configuration && input.configuration.route === "individual-designs"
+        ? input.configuration as unknown as { designs: { artworkId: string }[] } : null;
+      if (completed) {
+        const configuredIds = new Set(completed.designs.map((design) => design.artworkId));
+        if (configuredIds.size !== completed.designs.length || configuredIds.size !== canonicalIds.size || [...canonicalIds].some((id) => !configuredIds.has(id))) {
+          throw new DraftArtworkConfigurationError("Completed configuration must match every uploaded design.");
+        }
+      }
+    }
+    const result = await transaction.orderDraft.update({
+      where: { id: existing.id },
+      data: {
+        selectedRoute: input.selectedRoute,
+        startingPointConfirmed: input.startingPointConfirmed,
+        artworkAcknowledged: input.artworkAcknowledged,
+        workingConfiguration: jsonValue(input.workingConfiguration),
+        configuration: jsonValue(input.configuration),
+        version: { increment: 1 },
+      },
+    });
+    return databaseDraftToCanonical(result);
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function resetDraftForOwner(id: string, ownerUserId: string, expectedVersion: number) {

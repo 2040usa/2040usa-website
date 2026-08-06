@@ -9,7 +9,7 @@ import { isPreviewableArtwork } from "@/lib/artwork/file-validation";
 import { classifyArtworkRecovery } from "@/lib/artwork/recovery-classification";
 import type { CanonicalArtworkRecord } from "@/lib/artwork/types";
 
-function UploadedPreview({ record }: { record: CanonicalArtworkRecord }) {
+export function ArtworkPreview({ record }: { record: CanonicalArtworkRecord }) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,9 +53,10 @@ export function ArtworkFileList() {
                   ? "Reselect this exact file to continue its unexpired secure upload record. The browser cannot restore file bytes automatically."
                   : null;
         return <li key={record.id} className="flex min-w-0 flex-col gap-4 rounded-control border border-border bg-panel p-4 shadow-[var(--card-shadow)] sm:flex-row sm:items-center">
-        <div className="flex shrink-0 items-center justify-center">{record.status === "uploaded" && isPreviewableArtwork(record.extension) ? <UploadedPreview record={record} /> : <File aria-hidden="true" className="text-accent" size={28} />}</div>
+        <div className="flex shrink-0 items-center justify-center">{record.status === "uploaded" && isPreviewableArtwork(record.extension) ? <ArtworkPreview record={record} /> : <File aria-hidden="true" className="text-accent" size={28} />}</div>
         <div className="min-w-0 flex-1"><p className="break-words text-sm font-semibold text-text-primary">{record.originalName}</p><p className="mt-1 font-mono text-[0.65rem] text-text-muted">{record.mimeType} · {formatBytes(record.verifiedSizeBytes ?? record.declaredSizeBytes)} · {record.status}</p>{recoveryExplanation && <p className="mt-2 text-xs leading-5 text-text-muted">{recoveryExplanation}</p>}{record.failureCode && <p className="mt-2 text-xs text-error">Upload status: {record.failureCode.replaceAll("_", " ")}.</p>}</div>
         <div className="flex flex-wrap gap-3">
+          {record.status === "uploaded" && <ActionButton type="button" variant="secondary" disabled={state === "mutating"} aria-label={`Replace ${record.originalName}`} onClick={() => selectRecoveryTarget(record)}><RotateCcw aria-hidden="true" size={14} />Replace</ActionButton>}
           {canSelectRecovery && recovery.kind !== "none" && <ActionButton type="button" variant="secondary" disabled={state === "mutating"} aria-label={`${recovery.label} ${record.originalName}`} onClick={() => selectRecoveryTarget(record)}><RotateCcw aria-hidden="true" size={14} />{recovery.label}</ActionButton>}
           {recovery.kind === "remove-invalid" && <ActionButton type="button" variant="quiet" disabled={state === "mutating"} aria-label={`Remove invalid upload ${record.originalName}`} onClick={() => void remove(record)}><Trash2 aria-hidden="true" size={14} />Remove invalid upload</ActionButton>}
           {recovery.kind === "retry-delete" && <ActionButton type="button" variant="quiet" disabled={state === "mutating"} aria-label={`Retry delete ${record.originalName}`} onClick={() => void remove(record)}><RotateCcw aria-hidden="true" size={14} />Retry delete</ActionButton>}

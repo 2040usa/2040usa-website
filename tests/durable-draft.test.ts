@@ -50,7 +50,7 @@ describe("draft request and lifecycle validation", () => {
     expect(uuidSchema.safeParse("71e9305b-56f3-4df3-85c0-bbf8ca6e2c25").success).toBe(true);
     expect(uuidSchema.safeParse("not-an-owner").success).toBe(false);
     expect(draftSnapshotRequestSchema.safeParse({ ...base, workingConfiguration: { route: "gang-sheet", sheetCount: "", finishedWidth: "22", finishedLength: "36", notes: "editing" } }).success).toBe(true);
-    expect(draftSnapshotRequestSchema.safeParse({ ...base, workingConfiguration: { route: "separate-artwork", designs: [], notes: "" } }).success).toBe(false);
+    expect(draftSnapshotRequestSchema.safeParse({ ...base, workingConfiguration: { route: "individual-designs", designs: [], notes: "" } }).success).toBe(false);
     expect(bootstrapDraftRequestSchema.safeParse({ selectedRoute: "gang-sheet" }).success).toBe(true);
     expect(bootstrapDraftRequestSchema.safeParse({ selectedRoute: "gang-sheet", expectedVersion: 3 }).success).toBe(true);
   });
@@ -75,6 +75,14 @@ describe("draft request and lifecycle validation", () => {
     const store = createOrderDraftStore();
     store.getState().hydrateDurableDraft({ id: "71e9305b-56f3-4df3-85c0-bbf8ca6e2c25", version: 2, status: "active", updatedAt: "2026-08-03T12:00:00.000Z", selectedRoute: "gang-sheet", startingPointConfirmed: true, artworkAcknowledged: false, workingConfiguration: null, configuration: null, lastCompletedStep: 1 });
     expect(store.getState()).toMatchObject({ hydrationState: "ready", serverVersion: 2, selectedRoute: "gang-sheet", lastCompletedStep: 1 });
+  });
+
+  it("does not regress a canonical draft when an older response arrives last", () => {
+    const store = createOrderDraftStore();
+    const id = "71e9305b-56f3-4df3-85c0-bbf8ca6e2c25";
+    store.getState().hydrateDurableDraft({ id, version: 4, status: "active", updatedAt: "2026-08-03T12:04:00.000Z", selectedRoute: "individual-designs", startingPointConfirmed: true, artworkAcknowledged: false, workingConfiguration: { route: "individual-designs", designs: [], notes: "newer" }, configuration: null, lastCompletedStep: 1 });
+    store.getState().hydrateDurableDraft({ id, version: 3, status: "active", updatedAt: "2026-08-03T12:03:00.000Z", selectedRoute: "individual-designs", startingPointConfirmed: true, artworkAcknowledged: false, workingConfiguration: { route: "individual-designs", designs: [], notes: "older" }, configuration: null, lastCompletedStep: 1 });
+    expect(store.getState()).toMatchObject({ serverVersion: 4, workingConfiguration: { notes: "newer" } });
   });
 
   it("keeps hydration failure distinct from an absent durable draft", () => {

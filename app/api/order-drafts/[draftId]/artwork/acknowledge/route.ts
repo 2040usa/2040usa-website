@@ -20,7 +20,7 @@ export async function POST(request: Request, context: { params: Promise<{ draftI
     if (!reconciled.readiness.ready) {
       return privateJson({ error: { code: "ARTWORK_NOT_READY", message: "Upload and verify the required artwork before continuing." }, ...reconciled }, { status: 409 });
     }
-    const result = await acknowledgeReadyArtwork({ draftId: draftId.data, ownerUserId: owner.ownerUserId, expectedVersion: input.expectedDraftVersion });
+    const result = await acknowledgeReadyArtwork({ draftId: draftId.data, ownerUserId: owner.ownerUserId, expectedVersion: reconciled.draft.version });
     if (!result) return apiError(404, "NOT_FOUND", "Draft not found.");
     return privateJson({ draft: databaseDraftToCanonical(result.draft), artwork: result.artwork, readiness: result.readiness });
   } catch (error) {

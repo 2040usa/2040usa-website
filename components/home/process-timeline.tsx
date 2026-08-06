@@ -9,10 +9,10 @@ export function ProcessTimeline() {
     <section id="process" className="section-space border-b border-border bg-raised" aria-labelledby="process-heading">
       <div className="page-shell">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div><SectionLabel>Six controlled steps</SectionLabel><SectionHeading id="process-heading" className="mt-5">How it works.</SectionHeading></div>
-          <p className="max-w-md text-sm leading-6 text-text-muted">A visible production path from initial artwork through pickup coordination.</p>
+          <div><SectionLabel>Four draft steps</SectionLabel><SectionHeading id="process-heading" className="mt-5">How it works.</SectionHeading></div>
+          <p className="max-w-md text-sm leading-6 text-text-muted">The active website collects artwork and project details into a saved draft. Later commercial and production steps are not yet available here.</p>
         </div>
-        <ol className="mt-10 grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        <ol className="mt-10 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {processSteps.map((step, index) => {
             const Icon = step.icon;
             return (

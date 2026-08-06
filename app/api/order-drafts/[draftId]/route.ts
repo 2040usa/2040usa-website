@@ -1,5 +1,5 @@
 import { apiError, getVerifiedOwner, ownerErrorResponse, privateJson } from "@/lib/api/order-drafts";
-import { DraftConflictError, updateDraftForOwner } from "@/lib/database/order-draft-repository";
+import { DraftArtworkConfigurationError, DraftConflictError, updateDraftForOwner } from "@/lib/database/order-draft-repository";
 import { isSameOriginRequest, readJsonBody, RequestBodyError } from "@/lib/http/security";
 import { draftSnapshotRequestSchema, uuidSchema } from "@/lib/order-draft/durable";
 
@@ -16,6 +16,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ draft
     return privateJson({ draft });
   } catch (error) {
     if (error instanceof DraftConflictError) return apiError(409, "VERSION_CONFLICT", "A newer version of this draft exists.");
+    if (error instanceof DraftArtworkConfigurationError) return apiError(409, "ARTWORK_CONFIGURATION_CONFLICT", error.message);
     if (error instanceof RequestBodyError) return apiError(error.code === "BODY_TOO_LARGE" ? 413 : 400, error.code, "The request body is not valid.");
     if (error && typeof error === "object" && "issues" in error) return apiError(400, "INVALID_REQUEST", "The draft state is invalid.");
     return apiError(500, "SERVER_ERROR", "The draft could not be saved.");

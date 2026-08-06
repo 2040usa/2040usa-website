@@ -12,7 +12,7 @@ export async function runHostedDatabaseTests(input: { pool: Pool; ownerA: string
       bootstrapActiveDraft(ownerA, "gang-sheet"),
     ]);
     assert.equal(first.id, concurrent.id, "Concurrent bootstrap must return the same active draft.");
-    const secondOwner = await bootstrapActiveDraft(ownerB, "separate-artwork");
+    const secondOwner = await bootstrapActiveDraft(ownerB, "individual-designs");
     assert.notEqual(first.id, secondOwner.id, "Different owners receive different drafts.");
     assert.equal((await findActiveDraftForOwner(ownerA))?.id, first.id);
     assert.equal(await readDraftForOwner(first.id, ownerB), null, "Cross-owner lookup must be not found.");
@@ -63,7 +63,7 @@ export async function runHostedDatabaseTests(input: { pool: Pool; ownerA: string
     assert.equal(routed.version, reset!.version + 1);
     const idempotent = await bootstrapActiveDraft(ownerA, "gang-sheet", reset!.version);
     assert.equal(idempotent.version, routed.version, "Reconfirming the canonical route is idempotent even after a retry with an old version.");
-    await assert.rejects(() => bootstrapActiveDraft(ownerA, "separate-artwork", reset!.version), DraftConflictError, "A stale route change must conflict.");
+    await assert.rejects(() => bootstrapActiveDraft(ownerA, "individual-designs", reset!.version), DraftConflictError, "A stale route change must conflict.");
 
     const constraintCases = [
       ["route constraint", "update public.order_drafts set selected_route = 'checkout' where id = $1"],
@@ -72,11 +72,11 @@ export async function runHostedDatabaseTests(input: { pool: Pool; ownerA: string
       ["working missing route", "update public.order_drafts set working_configuration = '{}'::jsonb where id = $1"],
       ["working null route", "update public.order_drafts set working_configuration = '{\"route\":null}'::jsonb where id = $1"],
       ["working numeric route", "update public.order_drafts set working_configuration = '{\"route\":7}'::jsonb where id = $1"],
-      ["working mismatched route", "update public.order_drafts set working_configuration = '{\"route\":\"separate-artwork\"}'::jsonb where id = $1"],
+      ["working mismatched route", "update public.order_drafts set working_configuration = '{\"route\":\"individual-designs\"}'::jsonb where id = $1"],
       ["completed missing route", "update public.order_drafts set artwork_acknowledged = true, configuration = '{}'::jsonb where id = $1"],
       ["completed null route", "update public.order_drafts set artwork_acknowledged = true, configuration = '{\"route\":null}'::jsonb where id = $1"],
       ["completed numeric route", "update public.order_drafts set artwork_acknowledged = true, configuration = '{\"route\":7}'::jsonb where id = $1"],
-      ["completed mismatched route", "update public.order_drafts set artwork_acknowledged = true, configuration = '{\"route\":\"separate-artwork\"}'::jsonb where id = $1"],
+      ["completed mismatched route", "update public.order_drafts set artwork_acknowledged = true, configuration = '{\"route\":\"individual-designs\"}'::jsonb where id = $1"],
     ] as const;
     for (const [label, sql] of constraintCases) {
       await pool.query("begin");

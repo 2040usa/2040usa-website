@@ -12,4 +12,6 @@ Both Increment 2A migrations were applied only to `bcalocreiqbyufnakrnq`. `20260
 
 `20260804000300_harden_artwork_upload_attempt_policy.sql` recreates only the private bucket INSERT policy. It authorizes exact-path transfers solely for unexpired pending reservations and unexpired `upload_failed` retries; every expired or non-retryable lifecycle state requires explicit recovery.
 
+20260806000100_consolidate_gang_sheet_routes.sql is the forward-only Increment 3B migration. It preserves gang-sheet rows. It maps the three historical non-gang-sheet routes to individual-designs, maps their artwork to the canonical individual-design purpose, preserves artwork UUIDs and Storage paths, clears untrustworthy detached configuration, revokes artwork acknowledgment, increments affected draft versions, and replaces the route/purpose compatibility constraints. The artwork immutability trigger is disabled only around the controlled migration update and immediately re-enabled. Its final assertion fails the migration if any legacy active value remains.
+
 No remote reset occurred. Empty-database replay remains unproven because Docker, a disposable project, and a Supabase branch are unavailable.

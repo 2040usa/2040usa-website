@@ -68,17 +68,15 @@ describe("canonical readiness", () => {
     expect(calculateArtworkReadiness("gang-sheet", [{ ...base, status: "pending", uploadedAt: null, verifiedSizeBytes: null, verifiedMimeType: null }]).ready).toBe(false);
   });
 
-  it("requires exactly one uploaded non-deleting transfer-by-size record", () => {
-    const transfer = { ...base, route: "transfers-by-size" as const, purpose: "size-based-design" as const };
-    expect(calculateArtworkReadiness("transfers-by-size", [transfer]).ready).toBe(true);
-    expect(calculateArtworkReadiness("transfers-by-size", [transfer, { ...transfer, id: "00000000-0000-4000-8000-000000000004" }]).ready).toBe(false);
+  it("supports multiple uploaded individual designs", () => {
+    const design = { ...base, route: "individual-designs" as const, purpose: "individual-design" as const };
+    expect(calculateArtworkReadiness("individual-designs", [design]).ready).toBe(true);
+    expect(calculateArtworkReadiness("individual-designs", [design, { ...design, id: "00000000-0000-4000-8000-000000000004" }]).ready).toBe(true);
   });
 
   it.each([
     ["gang-sheet", "gang-sheet-file"],
-    ["separate-artwork", "individual-design"],
-    ["transfers-by-size", "size-based-design"],
-    ["full-apparel", "apparel-artwork-reference"],
+    ["individual-designs", "individual-design"],
   ] as const)("maps %s to its only compatible purpose", (route, purpose) => {
     expect(purposeForRoute(route)).toBe(purpose);
     expect(ARTWORK_POLICY_BY_ROUTE[route].purpose).toBe(purpose);

@@ -1,6 +1,12 @@
 import { z } from "zod";
-import { MAX_DYNAMIC_ROWS, MAX_NOTES_LENGTH, ORDER_ROUTE_VALUES } from "@/lib/order-draft/constants";
-import { garmentSources, printLocations, projectTypes } from "@/lib/order-draft/types";
+import {
+  MAX_CHANGE_INSTRUCTIONS_LENGTH,
+  MAX_DYNAMIC_ROWS,
+  MAX_NOTES_LENGTH,
+  MAX_PRINT_DIMENSION_INCHES,
+  MAX_PRINT_QUANTITY,
+  ORDER_ROUTE_VALUES,
+} from "@/lib/order-draft/constants";
 
 const numericInput = (value: unknown) => {
   if (typeof value !== "string") return value;
@@ -8,109 +14,124 @@ const numericInput = (value: unknown) => {
   return Number(value);
 };
 const positiveNumberSchema = (label: string) => z.number({ error: `${label} is required.` }).finite(`${label} must be a finite number.`).positive(`${label} must be greater than zero.`);
-const positiveNumber = (label: string) => z.preprocess(numericInput, positiveNumberSchema(label));
-const positiveWholeNumber = (label: string) => z.preprocess(numericInput, positiveNumberSchema(label).int(`${label} must be a whole number.`));
+const boundedDimension = (label: string) => z.preprocess(numericInput, positiveNumberSchema(label).max(MAX_PRINT_DIMENSION_INCHES, `${label} must be ${MAX_PRINT_DIMENSION_INCHES} inches or less.`));
+const quantity = z.preprocess(numericInput, positiveNumberSchema("Quantity").int("Quantity must be a whole number.").max(MAX_PRINT_QUANTITY, `Quantity must be ${MAX_PRINT_QUANTITY} or less.`));
 const notesSchema = z.string().max(MAX_NOTES_LENGTH, `Notes must be ${MAX_NOTES_LENGTH} characters or fewer.`);
-const rowIdSchema = z.string().min(1, "Each row needs a stable identifier.");
+const stableIdSchema = z.string().min(1, "Each size needs a stable identifier.").max(100);
+const artworkIdSchema = z.uuid("Artwork identifier is invalid.");
 
 export const orderRouteSchema = z.enum(ORDER_ROUTE_VALUES);
 
 export const gangSheetConfigurationSchema = z.object({
   route: z.literal("gang-sheet"),
-  sheetCount: positiveWholeNumber("Number of sheets"),
-  finishedWidth: positiveNumber("Finished width"),
-  finishedLength: positiveNumber("Finished length"),
+  sheetCount: z.preprocess(numericInput, positiveNumberSchema("Number of sheets").int("Number of sheets must be a whole number.").max(MAX_PRINT_QUANTITY)),
+  finishedWidth: boundedDimension("Finished width"),
+  finishedLength: boundedDimension("Finished length"),
   notes: notesSchema,
-});
+}).strict();
 
-const designRowSchema = z.object({
-  id: rowIdSchema,
-  label: z.string().trim().min(1, "Design label is required.").max(100, "Design label must be 100 characters or fewer."),
-  width: positiveNumber("Print width"),
-  quantity: positiveWholeNumber("Quantity"),
-});
-
-const sizeRowSchema = z.object({
-  id: rowIdSchema,
-  width: positiveNumber("Print width"),
-  quantity: positiveWholeNumber("Quantity"),
-});
-
-function uniqueRowIds<T extends { id: string }>(rows: T[], context: z.RefinementCtx) {
-  if (new Set(rows.map((row) => row.id)).size !== rows.length) {
-    context.addIssue({ code: "custom", message: "Every row must have a unique stable identifier." });
-  }
-}
-
-export const separateArtworkConfigurationSchema = z.object({
-  route: z.literal("separate-artwork"),
-  designs: z.array(designRowSchema)
-    .min(1, "Add at least one design.")
-    .max(MAX_DYNAMIC_ROWS, `Use no more than ${MAX_DYNAMIC_ROWS} designs in this prototype.`)
-    .superRefine(uniqueRowIds),
-  notes: notesSchema,
-});
-
-export const transfersBySizeConfigurationSchema = z.object({
-  route: z.literal("transfers-by-size"),
-  designLabel: z.string().trim().min(1, "Design label is required.").max(100, "Design label must be 100 characters or fewer."),
-  sizes: z.array(sizeRowSchema)
-    .min(1, "Add at least one size.")
-    .max(MAX_DYNAMIC_ROWS, `Use no more than ${MAX_DYNAMIC_ROWS} sizes in this prototype.`)
-    .superRefine(uniqueRowIds),
-  notes: notesSchema,
-});
-
-export const fullApparelConfigurationSchema = z.object({
-  route: z.literal("full-apparel"),
-  garmentSource: z.preprocess((value) => value === "" ? undefined : value, z.enum(garmentSources, { error: "Choose a garment source." })),
-  projectType: z.preprocess((value) => value === "" ? undefined : value, z.enum(projectTypes, { error: "Choose a project type." })),
-  garmentQuantity: positiveWholeNumber("Estimated garment quantity"),
-  printLocations: z.array(z.enum(printLocations)).min(1, "Choose at least one print location."),
-  notes: notesSchema,
-});
-
-export const orderConfigurationSchema = z.discriminatedUnion("route", [
-  gangSheetConfigurationSchema,
-  separateArtworkConfigurationSchema,
-  transfersBySizeConfigurationSchema,
-  fullApparelConfigurationSchema,
+const sizeVariantSchema = z.discriminatedUnion("method", [
+  z.object({ id: stableIdSchema, method: z.literal("width"), width: boundedDimension("Print width"), quantity }).strict(),
+  z.object({ id: stableIdSchema, method: z.literal("height"), height: boundedDimension("Print height"), quantity }).strict(),
+  z.object({ id: stableIdSchema, method: z.literal("original"), quantity }).strict(),
 ]);
 
-const workingRowIdSchema = z.string().min(1).max(100);
+function uniqueIds<T extends { id: string }>(rows: T[], context: z.RefinementCtx) {
+  if (new Set(rows.map((row) => row.id)).size !== rows.length) context.addIssue({ code: "custom", message: "Every size must have a unique stable identifier." });
+}
+
+const individualDesignSchema = z.object({
+  artworkId: artworkIdSchema,
+  sizes: z.array(sizeVariantSchema).min(1, "Add at least one requested size.").max(MAX_DYNAMIC_ROWS, `Use no more than ${MAX_DYNAMIC_ROWS} sizes per design.`).superRefine(uniqueIds),
+  wantsChanges: z.boolean(),
+  changeInstructions: z.string().max(MAX_CHANGE_INSTRUCTIONS_LENGTH, `Change instructions must be ${MAX_CHANGE_INSTRUCTIONS_LENGTH} characters or fewer.`),
+}).strict().superRefine((design, context) => {
+  if (design.wantsChanges && design.changeInstructions.trim().length === 0) {
+    context.addIssue({ code: "custom", path: ["changeInstructions"], message: "Describe the changes you want us to review." });
+  }
+  if (!design.wantsChanges && design.changeInstructions.length > 0) {
+    context.addIssue({ code: "custom", path: ["changeInstructions"], message: "Choose Yes before adding change instructions." });
+  }
+});
+
+export const individualDesignsConfigurationSchema = z.object({
+  route: z.literal("individual-designs"),
+  designs: z.array(individualDesignSchema).min(1, "Upload and configure at least one design.").max(MAX_DYNAMIC_ROWS).superRefine((designs, context) => {
+    if (new Set(designs.map((design) => design.artworkId)).size !== designs.length) context.addIssue({ code: "custom", message: "Each artwork file may be configured only once." });
+  }),
+  notes: notesSchema,
+}).strict();
+
+export const orderConfigurationSchema = z.discriminatedUnion("route", [gangSheetConfigurationSchema, individualDesignsConfigurationSchema]);
+
 const workingTextSchema = z.string().max(MAX_NOTES_LENGTH);
 const workingNumericSchema = z.string().max(40);
+const workingSizeSchema = z.object({
+  id: stableIdSchema,
+  method: z.union([z.literal(""), z.literal("width"), z.literal("height"), z.literal("original")]),
+  dimension: workingNumericSchema,
+  quantity: workingNumericSchema,
+}).strict();
+const workingDesignSchema = z.object({
+  artworkId: artworkIdSchema,
+  sizes: z.array(workingSizeSchema).min(1).max(MAX_DYNAMIC_ROWS).superRefine(uniqueIds),
+  wantsChanges: z.union([z.literal(""), z.literal("no"), z.literal("yes")]),
+  changeInstructions: z.string().max(MAX_CHANGE_INSTRUCTIONS_LENGTH),
+}).strict();
+
+export const individualDesignsFormSchema = z.object({
+  route: z.literal("individual-designs"),
+  designs: z.array(workingDesignSchema).min(1, "Upload and configure at least one design.").max(MAX_DYNAMIC_ROWS),
+  notes: workingTextSchema,
+}).strict().superRefine((configuration, context) => {
+  if (new Set(configuration.designs.map((design) => design.artworkId)).size !== configuration.designs.length) {
+    context.addIssue({ code: "custom", path: ["designs"], message: "Each artwork file may be configured only once." });
+  }
+  configuration.designs.forEach((design, designIndex) => {
+    design.sizes.forEach((size, sizeIndex) => {
+      if (!size.method) context.addIssue({ code: "custom", path: ["designs", designIndex, "sizes", sizeIndex, "method"], message: "Choose one sizing method." });
+      if (!Number.isInteger(Number(size.quantity)) || Number(size.quantity) < 1 || Number(size.quantity) > MAX_PRINT_QUANTITY) {
+        context.addIssue({ code: "custom", path: ["designs", designIndex, "sizes", sizeIndex, "quantity"], message: `Enter a whole-number quantity from 1 to ${MAX_PRINT_QUANTITY}.` });
+      }
+      if (size.method === "width" || size.method === "height") {
+        const dimension = Number(size.dimension);
+        if (!Number.isFinite(dimension) || dimension <= 0 || dimension > MAX_PRINT_DIMENSION_INCHES) {
+          context.addIssue({ code: "custom", path: ["designs", designIndex, "sizes", sizeIndex, "dimension"], message: `Enter a dimension from greater than 0 to ${MAX_PRINT_DIMENSION_INCHES} inches.` });
+        }
+      }
+      if (size.method === "original" && size.dimension.trim()) {
+        context.addIssue({ code: "custom", path: ["designs", designIndex, "sizes", sizeIndex, "dimension"], message: "Original-size requests cannot include an editable dimension." });
+      }
+    });
+    if (!design.wantsChanges) context.addIssue({ code: "custom", path: ["designs", designIndex, "wantsChanges"], message: "Choose whether you want artwork changes." });
+    if (design.wantsChanges === "yes" && !design.changeInstructions.trim()) context.addIssue({ code: "custom", path: ["designs", designIndex, "changeInstructions"], message: "Describe the changes you want us to review." });
+    if (design.wantsChanges !== "yes" && design.changeInstructions.length > 0) context.addIssue({ code: "custom", path: ["designs", designIndex, "changeInstructions"], message: "Choose Yes before adding change instructions." });
+  });
+}).transform((configuration) => individualDesignsConfigurationSchema.parse({
+  route: configuration.route,
+  notes: configuration.notes,
+  designs: configuration.designs.map((design) => ({
+    artworkId: design.artworkId,
+    wantsChanges: design.wantsChanges === "yes",
+    changeInstructions: design.changeInstructions,
+    sizes: design.sizes.map((size) => size.method === "width"
+      ? { id: size.id, method: "width", width: Number(size.dimension), quantity: Number(size.quantity) }
+      : size.method === "height"
+        ? { id: size.id, method: "height", height: Number(size.dimension), quantity: Number(size.quantity) }
+        : { id: size.id, method: "original", quantity: Number(size.quantity) }),
+  })),
+}));
 
 export const workingOrderConfigurationSchema = z.discriminatedUnion("route", [
+  z.object({ route: z.literal("gang-sheet"), sheetCount: workingNumericSchema, finishedWidth: workingNumericSchema, finishedLength: workingNumericSchema, notes: workingTextSchema }).strict(),
   z.object({
-    route: z.literal("gang-sheet"),
-    sheetCount: workingNumericSchema,
-    finishedWidth: workingNumericSchema,
-    finishedLength: workingNumericSchema,
+    route: z.literal("individual-designs"),
+    designs: z.array(workingDesignSchema).max(MAX_DYNAMIC_ROWS).superRefine((designs, context) => {
+      if (new Set(designs.map((design) => design.artworkId)).size !== designs.length) context.addIssue({ code: "custom", message: "Each artwork file may be configured only once." });
+    }),
     notes: workingTextSchema,
-  }),
-  z.object({
-    route: z.literal("separate-artwork"),
-    designs: z.array(z.object({ id: workingRowIdSchema, label: z.string().max(100), width: workingNumericSchema, quantity: workingNumericSchema })).min(1).max(MAX_DYNAMIC_ROWS).superRefine(uniqueRowIds),
-    notes: workingTextSchema,
-  }),
-  z.object({
-    route: z.literal("transfers-by-size"),
-    designLabel: z.string().max(100),
-    sizes: z.array(z.object({ id: workingRowIdSchema, width: workingNumericSchema, quantity: workingNumericSchema })).min(1).max(MAX_DYNAMIC_ROWS).superRefine(uniqueRowIds),
-    notes: workingTextSchema,
-  }),
-  z.object({
-    route: z.literal("full-apparel"),
-    garmentSource: z.union([z.literal(""), z.enum(garmentSources)]),
-    projectType: z.union([z.literal(""), z.enum(projectTypes)]),
-    garmentQuantity: workingNumericSchema,
-    printLocations: z.array(z.enum(printLocations)).max(printLocations.length),
-    notes: workingTextSchema,
-  }),
+  }).strict(),
 ]);
 
 export type GangSheetFormValues = z.infer<typeof gangSheetConfigurationSchema>;
-export type SeparateArtworkFormValues = z.infer<typeof separateArtworkConfigurationSchema>;
-export type TransfersBySizeFormValues = z.infer<typeof transfersBySizeConfigurationSchema>;
-export type FullApparelFormValues = z.infer<typeof fullApparelConfigurationSchema>;
+export type IndividualDesignsFormValues = z.infer<typeof individualDesignsConfigurationSchema>;

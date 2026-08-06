@@ -17,12 +17,12 @@ export async function runHostedRlsTests(input: { userA: HostedOwner; userB: Host
     const ownerUpdate = await userA.client.from("order_drafts").update({ selected_route: "gang-sheet", starting_point_confirmed: true, artwork_acknowledged: true }).eq("id", insertA.data.id).select("version").single();
     assert.equal(ownerUpdate.error, null, "Owner should update its draft.");
 
-    const malformedWorking = [{}, { route: null }, { route: 7 }, { route: "separate-artwork" }];
+    const malformedWorking = [{}, { route: null }, { route: 7 }, { route: "individual-designs" }];
     for (const value of malformedWorking) {
       const result = await userA.client.from("order_drafts").update({ working_configuration: value }).eq("id", insertA.data.id).select("id");
       assert.ok(result.error, `Authenticated Data API must reject malformed working route ${JSON.stringify(value)}.`);
     }
-    const malformedCompleted = [{}, { route: null }, { route: 7 }, { route: "separate-artwork" }];
+    const malformedCompleted = [{}, { route: null }, { route: 7 }, { route: "individual-designs" }];
     for (const value of malformedCompleted) {
       const result = await userA.client.from("order_drafts").update({ configuration: value }).eq("id", insertA.data.id).select("id");
       assert.ok(result.error, `Authenticated Data API must reject malformed completed route ${JSON.stringify(value)}.`);

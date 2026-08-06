@@ -43,6 +43,7 @@ export function ArtworkProvider({ children }: { children: ReactNode }) {
   const sequenceRef = useRef(0);
   const latestIssuedRef = useRef(0);
   const orderingRef = useRef(EMPTY_ARTWORK_ORDERING_STATE);
+  const pendingCompletionsRef = useRef(0);
 
   const beginCanonicalOperation = useCallback(() => {
     const sequence = sequenceRef.current + 1;
@@ -56,7 +57,7 @@ export function ArtworkProvider({ children }: { children: ReactNode }) {
     orderingRef.current = next;
     setRecords(next.records);
     setReadiness(calculateArtworkReadiness(selectedRoute, next.records));
-    setState("ready");
+    if (pendingCompletionsRef.current === 0) setState("ready");
     setError(null);
   }, [beginCanonicalOperation, selectedRoute]);
 
@@ -102,7 +103,7 @@ export function ArtworkProvider({ children }: { children: ReactNode }) {
       return () => window.cancelAnimationFrame(frame);
     }
     const frame = window.requestAnimationFrame(() => {
-      const operation = pathname === "/order/start" ? refresh : reconcile;
+      const operation = pathname === "/order/artwork" ? reconcile : refresh;
       void operation().catch(() => undefined);
     });
     return () => window.cancelAnimationFrame(frame);
@@ -127,30 +128,49 @@ export function ArtworkProvider({ children }: { children: ReactNode }) {
     },
     complete: async (artworkId) => {
       if (!draftId) throw new Error("Draft unavailable.");
-      const sequence = beginCanonicalOperation();
+      pendingCompletionsRef.current += 1;
       setState("mutating");
+      let completedSuccessfully = false;
       try {
-        let snapshot = await parseArtworkSnapshot(await fetch(`/api/artwork/${artworkId}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draftId }) }));
-        const completed = snapshot.artwork.find((record) => record.id === artworkId);
-        const replaced = completed?.replacementForId ? snapshot.artwork.find((record) => record.id === completed.replacementForId) : null;
-        applySnapshot(snapshot, sequence);
+        const replaced = await runSerialized(async () => {
+          const sequence = beginCanonicalOperation();
+          try {
+            const snapshot = await parseArtworkSnapshotWithDraft(await fetch(`/api/artwork/${artworkId}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draftId }) }));
+            if (snapshot.draft) applyServerDraft(snapshot.draft);
+            const completed = snapshot.artwork.find((record) => record.id === artworkId);
+            const replaced = completed?.replacementForId ? snapshot.artwork.find((record) => record.id === completed.replacementForId) : null;
+            applySnapshot(snapshot, sequence);
+            return replaced;
+          }
+          catch (cause) {
+            if (cause instanceof ArtworkRequestError && cause.snapshot) {
+              if (cause.snapshot.draft) applyServerDraft(cause.snapshot.draft);
+              applySnapshot(cause.snapshot, sequence);
+            }
+            if (sequence === latestIssuedRef.current) { setState("error"); setError(cause instanceof Error ? cause.message : "Upload completion could not be verified."); } throw cause;
+          }
+        });
         if (replaced) {
-          await runAfterDraftFlush(async (draftState) => {
-            if (!draftState.serverVersion) throw new Error("The durable draft version is unavailable.");
-            const deletionSequence = beginCanonicalOperation();
-            const deletion = await parseArtworkSnapshotWithDraft(await fetch(`/api/artwork/${replaced.id}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draftId, expectedVersion: replaced.version, expectedDraftVersion: draftState.serverVersion }) }));
-            if (deletion.draft) applyServerDraft(deletion.draft);
-            snapshot = deletion;
-            applySnapshot(deletion, deletionSequence);
-          });
+          try {
+            await runAfterDraftFlush(async (draftState) => {
+              if (!draftState.serverVersion) throw new Error("The durable draft version is unavailable.");
+              const deletionSequence = beginCanonicalOperation();
+              const deletion = await parseArtworkSnapshotWithDraft(await fetch(`/api/artwork/${replaced.id}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draftId, expectedVersion: replaced.version, expectedDraftVersion: draftState.serverVersion }) }));
+              if (deletion.draft) applyServerDraft(deletion.draft);
+              applySnapshot(deletion, deletionSequence);
+            });
+          } catch (cause) {
+            if (cause instanceof ArtworkRequestError && cause.snapshot) {
+              if (cause.snapshot.draft) applyServerDraft(cause.snapshot.draft);
+              applySnapshot(cause.snapshot, beginCanonicalOperation());
+            }
+            setState("error"); setError(cause instanceof Error ? cause.message : "Replacement cleanup could not be completed."); throw cause;
+          }
         }
-      }
-      catch (cause) {
-        if (cause instanceof ArtworkRequestError && cause.snapshot) {
-          if (cause.snapshot.draft) applyServerDraft(cause.snapshot.draft);
-          applySnapshot(cause.snapshot, sequence);
-        }
-        if (sequence === latestIssuedRef.current) { setState("error"); setError(cause instanceof Error ? cause.message : "Upload completion could not be verified."); } throw cause;
+        completedSuccessfully = true;
+      } finally {
+        pendingCompletionsRef.current -= 1;
+        if (pendingCompletionsRef.current === 0 && completedSuccessfully) setState("ready");
       }
     },
     fail: async (record) => {

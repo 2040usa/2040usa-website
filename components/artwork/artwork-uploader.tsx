@@ -110,9 +110,9 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage }:
   const [selectionError, setSelectionError] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const cancelledReservations = useRef(new Set<string>());
-  const transferReplacement = route === "transfers-by-size" ? records.find((record) => record.status === "uploaded") ?? null : null;
-  const input = useFileInput(useMemo(() => ({ accept: ARTWORK_ACCEPT, multiple: route !== "transfers-by-size" }), [route]));
-  const dropzone = useDropzone(useMemo(() => ({ noClick: false }), []));
+  const replacementTarget = recoveryTarget?.status === "uploaded" ? recoveryTarget : null;
+  const input = useFileInput(useMemo(() => ({ accept: ARTWORK_ACCEPT, multiple: !replacementTarget }), [replacementTarget]));
+  const dropzone = useDropzone(useMemo(() => ({ noClick: false, multiple: !replacementTarget }), [replacementTarget]));
 
   useEffect(() => {
     const onAdded = (file: (typeof files)[number]) => {
@@ -120,7 +120,7 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage }:
       if (typeof metaFor(file).artworkId === "string") return;
       try {
         const validated = validateSelectedArtworkFile(file.data);
-        uppy.setFileMeta(file.id, { ...file.meta, idempotencyKey: crypto.randomUUID(), contentType: validated.mimeType, recoverArtworkId: recoveryTarget?.id });
+        uppy.setFileMeta(file.id, { ...file.meta, idempotencyKey: crypto.randomUUID(), contentType: validated.mimeType, recoverArtworkId: replacementTarget ? undefined : recoveryTarget?.id });
       } catch (cause) { setSelectionError(cause instanceof Error ? cause.message : "This file is not supported."); uppy.removeFile(file.id); return; }
       setSelectionError("");
     };
@@ -147,7 +147,7 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage }:
     uppy.on("upload-error", onError);
     uppy.on("restriction-failed", onRestrictionFailed);
     return () => { uppy.off("file-added", onAdded); uppy.off("upload-success", onSuccess); uppy.off("upload-error", onError); uppy.off("restriction-failed", onRestrictionFailed); };
-  }, [complete, draftId, fail, records, recoveryTarget, route, setUploadStage, uppy]);
+  }, [complete, draftId, fail, records, recoveryTarget, replacementTarget, route, setUploadStage, uppy]);
 
   const beginUpload = async () => {
     if (!route) return;
@@ -177,7 +177,7 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage }:
           purpose: purposeForRoute(route),
           idempotencyKey,
           recoverArtworkId: typeof currentMeta.recoverArtworkId === "string" ? currentMeta.recoverArtworkId : null,
-          replacementForArtworkId: transferReplacement?.id ?? null,
+          replacementForArtworkId: replacementTarget?.id ?? null,
         });
         if (!reservation.upload) {
           uppy.removeFile(file.id);
@@ -240,15 +240,14 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage }:
         <p className="text-xs text-text-muted">{records.filter((item) => item.status !== "deleting").length} / 20 files · {formatBytes(readiness.totalDeclaredBytes)} / 250 MiB</p>
       </div>
       <p className="mt-4 text-sm leading-6 text-text-muted">PNG, JPG, JPEG, WebP, PDF, AI, or PSD. Each file may be up to 50 MiB. Extension and declared type checks do not inspect file contents.</p>
-      {recoveryTarget && <div className="mt-4 rounded-control border border-primary-action/30 bg-raised p-4"><p className="text-sm font-semibold text-text-primary">Recovering exact upload record</p><p className="mt-2 text-sm text-text-muted">Reselect <strong className="text-text-primary">{recoveryTarget.originalName}</strong>. Matching metadata alone never chooses a record automatically.</p><button type="button" className="mt-3 text-sm font-semibold text-primary-action underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-focus-ring" onClick={() => selectRecoveryTarget(null)}>Cancel recovery</button></div>}
+      {recoveryTarget && <div className="mt-4 rounded-control border border-primary-action/30 bg-raised p-4"><p className="text-sm font-semibold text-text-primary">{replacementTarget ? "Replacing uploaded artwork" : "Recovering exact upload record"}</p><p className="mt-2 text-sm text-text-muted">{replacementTarget ? "Choose the replacement file. The current private object remains until the new upload is verified." : <>Reselect <strong className="text-text-primary">{recoveryTarget.originalName}</strong>. Matching metadata alone never chooses a record automatically.</>}</p><button type="button" className="mt-3 text-sm font-semibold text-primary-action underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-focus-ring" onClick={() => selectRecoveryTarget(null)}>Cancel {replacementTarget ? "replacement" : "recovery"}</button></div>}
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <input {...input.getInputProps()} className="sr-only" aria-label="Choose artwork files" />
-        <ActionButton {...input.getButtonProps()}><FileUp aria-hidden="true" size={16} /> {recoveryTarget ? `Reselect ${recoveryTarget.originalName}` : transferReplacement ? "Replace artwork file" : "Choose files"}</ActionButton>
+        <ActionButton {...input.getButtonProps()}><FileUp aria-hidden="true" size={16} /> {replacementTarget ? `Choose replacement for ${replacementTarget.originalName}` : recoveryTarget ? `Reselect ${recoveryTarget.originalName}` : "Choose files"}</ActionButton>
         <button {...(dropzone.getRootProps() as unknown as ButtonHTMLAttributes<HTMLButtonElement>)} type="button" className="min-h-20 rounded-control border border-dashed border-border-strong bg-background px-4 text-sm font-medium text-text-secondary hover:border-primary-action hover:bg-raised hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">Drop files here or press Enter</button>
         <input {...dropzone.getInputProps()} className="sr-only" aria-label="Select artwork files from dropzone" accept={ARTWORK_ACCEPT} />
       </div>
       {(selectionError || error) && <p role="alert" className="mt-4 text-sm text-error">{selectionError || error}</p>}
-      {transferReplacement && <p className="mt-4 text-xs leading-5 text-text-muted">Replacement uploads to a new private path. The current ready file remains until the replacement is verified.</p>}
       <p className="sr-only" aria-live="polite">{announcement}</p>
       <p className="mt-3 text-xs text-text-muted" aria-live="polite">Upload status: <span className="font-medium text-text-secondary">{uploadStage}</span></p>
 

@@ -77,6 +77,8 @@ function usePersistence(store: OrderDraftStoreApi): PersistenceActions {
   }, []);
 
   const applyCanonical = useCallback((draft: CanonicalOrderDraft | null) => {
+    const current = store.getState();
+    if (draft && current.serverDraftId === draft.id && current.serverVersion !== null && draft.version < current.serverVersion) return;
     persistedKey.current = draft ? snapshotKey(draft) : snapshotKey({ ...store.getState(), selectedRoute: null, startingPointConfirmed: false, artworkAcknowledged: false, workingConfiguration: null, configuration: null });
     store.getState().hydrateDurableDraft(draft);
   }, [store]);

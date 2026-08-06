@@ -1,19 +1,16 @@
-export type OrderRoute =
-  | "gang-sheet"
-  | "separate-artwork"
-  | "transfers-by-size"
-  | "full-apparel";
-
+export type OrderRoute = "gang-sheet" | "individual-designs";
 export type OrderStepId = "start" | "artwork" | "configure" | "review";
 
-export type DraftRow = {
-  id: string;
-  width: number;
-  quantity: number;
-};
+export type WidthSizeVariant = { id: string; method: "width"; width: number; quantity: number };
+export type HeightSizeVariant = { id: string; method: "height"; height: number; quantity: number };
+export type OriginalSizeVariant = { id: string; method: "original"; quantity: number };
+export type SizeVariant = WidthSizeVariant | HeightSizeVariant | OriginalSizeVariant;
 
-export type DesignRow = DraftRow & {
-  label: string;
+export type IndividualDesignConfiguration = {
+  artworkId: string;
+  sizes: SizeVariant[];
+  wantsChanges: boolean;
+  changeInstructions: string;
 };
 
 export type GangSheetConfiguration = {
@@ -24,68 +21,13 @@ export type GangSheetConfiguration = {
   notes: string;
 };
 
-export type SeparateArtworkConfiguration = {
-  route: "separate-artwork";
-  designs: DesignRow[];
+export type IndividualDesignsConfiguration = {
+  route: "individual-designs";
+  designs: IndividualDesignConfiguration[];
   notes: string;
 };
 
-export type TransfersBySizeConfiguration = {
-  route: "transfers-by-size";
-  designLabel: string;
-  sizes: DraftRow[];
-  notes: string;
-};
-
-export const garmentSources = [
-  "customer-supplies",
-  "2040-supplies",
-  "not-sure",
-] as const;
-export type GarmentSource = (typeof garmentSources)[number];
-
-export const projectTypes = [
-  "t-shirts",
-  "hoodies-sweatshirts",
-  "caps",
-  "mixed-apparel",
-  "other-not-sure",
-] as const;
-export type ProjectType = (typeof projectTypes)[number];
-
-export const printLocations = [
-  "front",
-  "back",
-  "left-sleeve",
-  "right-sleeve",
-  "other-not-sure",
-] as const;
-export type PrintLocation = (typeof printLocations)[number];
-
-export type FullApparelConfiguration = {
-  route: "full-apparel";
-  garmentSource: GarmentSource;
-  projectType: ProjectType;
-  garmentQuantity: number;
-  printLocations: PrintLocation[];
-  notes: string;
-};
-
-export type OrderConfiguration =
-  | GangSheetConfiguration
-  | SeparateArtworkConfiguration
-  | TransfersBySizeConfiguration
-  | FullApparelConfiguration;
-
-export type WorkingDraftRow = {
-  id: string;
-  width: string;
-  quantity: string;
-};
-
-export type WorkingDesignRow = WorkingDraftRow & {
-  label: string;
-};
+export type OrderConfiguration = GangSheetConfiguration | IndividualDesignsConfiguration;
 
 export type WorkingGangSheetConfiguration = {
   route: "gang-sheet";
@@ -95,34 +37,27 @@ export type WorkingGangSheetConfiguration = {
   notes: string;
 };
 
-export type WorkingSeparateArtworkConfiguration = {
-  route: "separate-artwork";
-  designs: WorkingDesignRow[];
+export type WorkingSizeVariant = {
+  id: string;
+  method: "" | "width" | "height" | "original";
+  dimension: string;
+  quantity: string;
+};
+
+export type WorkingIndividualDesignConfiguration = {
+  artworkId: string;
+  sizes: WorkingSizeVariant[];
+  wantsChanges: "" | "no" | "yes";
+  changeInstructions: string;
+};
+
+export type WorkingIndividualDesignsConfiguration = {
+  route: "individual-designs";
+  designs: WorkingIndividualDesignConfiguration[];
   notes: string;
 };
 
-export type WorkingTransfersBySizeConfiguration = {
-  route: "transfers-by-size";
-  designLabel: string;
-  sizes: WorkingDraftRow[];
-  notes: string;
-};
-
-export type WorkingFullApparelConfiguration = {
-  route: "full-apparel";
-  garmentSource: GarmentSource | "";
-  projectType: ProjectType | "";
-  garmentQuantity: string;
-  printLocations: PrintLocation[];
-  notes: string;
-};
-
-export type WorkingOrderConfiguration =
-  | WorkingGangSheetConfiguration
-  | WorkingSeparateArtworkConfiguration
-  | WorkingTransfersBySizeConfiguration
-  | WorkingFullApparelConfiguration;
-
+export type WorkingOrderConfiguration = WorkingGangSheetConfiguration | WorkingIndividualDesignsConfiguration;
 export type CompletedStep = 0 | 1 | 2 | 3;
 
 export type OrderDraftSnapshot = {

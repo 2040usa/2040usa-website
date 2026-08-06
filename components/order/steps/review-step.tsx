@@ -22,7 +22,7 @@ export function ReviewStep() {
   const { reset } = useOrderDraftPersistence();
   const [resetError, setResetError] = useState("");
   const { records: artworkRecords, refresh: refreshArtwork } = useArtwork();
-  const summary = configuration ? formatConfigurationSummary(configuration) : [];
+  const summary = configuration ? formatConfigurationSummary(configuration, artworkRecords) : [];
   const startOver = async () => {
     if (!window.confirm("Clear this durable prototype draft and return to the starting point?")) return;
     setResetError("");
