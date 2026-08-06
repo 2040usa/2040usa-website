@@ -5,8 +5,8 @@ import { OrderShell } from "@/components/order/order-shell";
 import { ArtworkProvider } from "@/components/artwork/artwork-provider";
 
 export const metadata: Metadata = {
-  title: "Order Prototype | 2040 USA",
-  description: "Configure a durable DTF project draft. No order is created.",
+  title: "Start a Print | 2040 USA",
+  description: "Prepare a durable DTF project draft. No order is created.",
 };
 
 export default function OrderLayout({ children }: { children: ReactNode }) {

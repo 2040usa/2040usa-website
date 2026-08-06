@@ -53,4 +53,25 @@ for (const viewport of viewports) {
       path: `artifacts/visual-review/home-${viewport.name}.png`,
     });
   });
+
+  test(`${viewport.name} order start visual audit remains light and has no overflow`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto("/order/start", { waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("How do you want to start?");
+
+    const presentation = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      colorScheme: window.getComputedStyle(document.documentElement).colorScheme,
+    }));
+
+    expect(presentation.scrollWidth, `order overflow at ${viewport.width}px`).toBeLessThanOrEqual(presentation.clientWidth);
+    expect(presentation.colorScheme).toBe("light");
+    await expect(page.locator("h1")).toHaveCount(1);
+
+    await page.screenshot({
+      fullPage: true,
+      path: `artifacts/visual-review/order-start-${viewport.name}.png`,
+    });
+  });
 }

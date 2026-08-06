@@ -234,37 +234,37 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage }:
   };
 
   return (
-    <section className="mt-6 rounded-control border border-border bg-panel p-5" aria-labelledby="upload-artwork-title">
+    <section className="mt-6 rounded-control border border-border bg-panel p-5 shadow-[var(--card-shadow)]" aria-labelledby="upload-artwork-title">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><p className="font-mono text-[0.56rem] uppercase tracking-widest text-accent">Private resumable upload</p><h2 id="upload-artwork-title" className="mt-2 font-display text-2xl uppercase text-text-primary">Add artwork files</h2></div>
-        <p className="font-mono text-[0.56rem] uppercase tracking-widest text-text-muted">{records.filter((item) => item.status !== "deleting").length} / 20 files · {formatBytes(readiness.totalDeclaredBytes)} / 250 MiB</p>
+        <div><p className="text-xs font-semibold text-text-secondary">Private resumable upload</p><h2 id="upload-artwork-title" className="mt-2 font-display text-2xl font-semibold text-text-primary">Add artwork files</h2></div>
+        <p className="text-xs text-text-muted">{records.filter((item) => item.status !== "deleting").length} / 20 files · {formatBytes(readiness.totalDeclaredBytes)} / 250 MiB</p>
       </div>
       <p className="mt-4 text-sm leading-6 text-text-muted">PNG, JPG, JPEG, WebP, PDF, AI, or PSD. Each file may be up to 50 MiB. Extension and declared type checks do not inspect file contents.</p>
-      {recoveryTarget && <div className="mt-4 border border-accent/60 bg-accent/5 p-4"><p className="font-mono text-[0.58rem] font-bold uppercase tracking-widest text-text-primary">Recovering exact upload record</p><p className="mt-2 text-sm text-text-muted">Reselect <strong className="text-text-primary">{recoveryTarget.originalName}</strong>. Matching metadata alone never chooses a record automatically.</p><button type="button" className="mt-3 font-mono text-[0.58rem] uppercase tracking-widest text-text-primary underline decoration-accent underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent" onClick={() => selectRecoveryTarget(null)}>Cancel recovery</button></div>}
+      {recoveryTarget && <div className="mt-4 rounded-control border border-primary-action/30 bg-raised p-4"><p className="text-sm font-semibold text-text-primary">Recovering exact upload record</p><p className="mt-2 text-sm text-text-muted">Reselect <strong className="text-text-primary">{recoveryTarget.originalName}</strong>. Matching metadata alone never chooses a record automatically.</p><button type="button" className="mt-3 text-sm font-semibold text-primary-action underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-focus-ring" onClick={() => selectRecoveryTarget(null)}>Cancel recovery</button></div>}
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <input {...input.getInputProps()} className="sr-only" aria-label="Choose artwork files" />
         <ActionButton {...input.getButtonProps()}><FileUp aria-hidden="true" size={16} /> {recoveryTarget ? `Reselect ${recoveryTarget.originalName}` : transferReplacement ? "Replace artwork file" : "Choose files"}</ActionButton>
-        <button {...(dropzone.getRootProps() as unknown as ButtonHTMLAttributes<HTMLButtonElement>)} type="button" className="min-h-20 rounded-control border border-dashed border-border px-4 font-mono text-xs uppercase tracking-widest text-text-muted hover:border-accent hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent">Drop files here or press Enter</button>
+        <button {...(dropzone.getRootProps() as unknown as ButtonHTMLAttributes<HTMLButtonElement>)} type="button" className="min-h-20 rounded-control border border-dashed border-border-strong bg-background px-4 text-sm font-medium text-text-secondary hover:border-primary-action hover:bg-raised hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">Drop files here or press Enter</button>
         <input {...dropzone.getInputProps()} className="sr-only" aria-label="Select artwork files from dropzone" accept={ARTWORK_ACCEPT} />
       </div>
       {(selectionError || error) && <p role="alert" className="mt-4 text-sm text-error">{selectionError || error}</p>}
       {transferReplacement && <p className="mt-4 text-xs leading-5 text-text-muted">Replacement uploads to a new private path. The current ready file remains until the replacement is verified.</p>}
       <p className="sr-only" aria-live="polite">{announcement}</p>
-      <p className="mt-3 font-mono text-[0.54rem] uppercase tracking-widest text-text-muted" aria-live="polite">Upload status: {uploadStage}</p>
+      <p className="mt-3 text-xs text-text-muted" aria-live="polite">Upload status: <span className="font-medium text-text-secondary">{uploadStage}</span></p>
 
       {files.length > 0 && <ul className="mt-6 space-y-3" aria-label="Selected artwork upload queue">
         {files.map((file) => {
           const progress = file.progress;
           const percentage = typeof progress.percentage === "number" ? progress.percentage : 0;
           const uploaded = typeof progress.bytesUploaded === "number" ? progress.bytesUploaded : 0;
-          return <li key={file.id} className="border border-border bg-background p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold text-text-primary">{file.name}</p><p className="mt-1 font-mono text-[0.55rem] uppercase tracking-widest text-text-muted">{formatBytes(uploaded)} / {formatBytes(file.size ?? 0)} · {percentage}%</p></div><span className="font-mono text-[0.55rem] uppercase tracking-widest text-accent">{progress.uploadComplete ? "Uploaded" : progress.uploadStarted ? file.isPaused ? "Paused" : "Uploading" : "Selected"}</span></div>
+          return <li key={file.id} className="rounded-control border border-border bg-background p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="break-words text-sm font-semibold text-text-primary">{file.name}</p><p className="mt-1 font-mono text-[0.65rem] text-text-muted">{formatBytes(uploaded)} / {formatBytes(file.size ?? 0)} · {percentage}%</p></div><span className="text-xs font-semibold text-primary-action">{progress.uploadComplete ? "Uploaded" : progress.uploadStarted ? file.isPaused ? "Paused" : "Uploading" : "Selected"}</span></div>
             {file.data instanceof File && !progress.uploadComplete && <LocalFilePreview file={file.data} />}
             <progress className="mt-3 h-2 w-full accent-[var(--accent)]" max={100} value={percentage} aria-label={`Upload progress for ${file.name}`}>{percentage}%</progress>
             <div className="mt-3 flex flex-wrap gap-4">
-              {progress.uploadStarted && !progress.uploadComplete && <button type="button" onClick={() => uppy.pauseResume(file.id)} className="inline-flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-widest text-text-primary underline decoration-accent underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent">{file.isPaused ? <Play aria-hidden="true" size={13} /> : <Pause aria-hidden="true" size={13} />}{file.isPaused ? `Resume ${file.name}` : `Pause ${file.name}`}</button>}
-              {file.error && <button type="button" onClick={() => void uppy.retryUpload(file.id)} className="inline-flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-widest text-text-primary underline decoration-accent underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"><RotateCcw aria-hidden="true" size={13} /> Retry {file.name}</button>}
-              {!progress.uploadComplete && <button type="button" onClick={() => void cancelFile(file.id)} className="inline-flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-widest text-error underline decoration-current underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"><Trash2 aria-hidden="true" size={13} /> Cancel {file.name}</button>}
+              {progress.uploadStarted && !progress.uploadComplete && <button type="button" onClick={() => uppy.pauseResume(file.id)} className="inline-flex items-center gap-2 text-xs font-semibold text-text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-focus-ring">{file.isPaused ? <Play aria-hidden="true" size={13} /> : <Pause aria-hidden="true" size={13} />}{file.isPaused ? `Resume ${file.name}` : `Pause ${file.name}`}</button>}
+              {file.error && <button type="button" onClick={() => void uppy.retryUpload(file.id)} className="inline-flex items-center gap-2 text-xs font-semibold text-text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-focus-ring"><RotateCcw aria-hidden="true" size={13} /> Retry {file.name}</button>}
+              {!progress.uploadComplete && <button type="button" onClick={() => void cancelFile(file.id)} className="inline-flex items-center gap-2 text-xs font-semibold text-error underline decoration-current underline-offset-4 focus-visible:outline-2 focus-visible:outline-focus-ring"><Trash2 aria-hidden="true" size={13} /> Cancel {file.name}</button>}
             </div>
           </li>;
         })}

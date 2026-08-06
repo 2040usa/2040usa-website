@@ -42,8 +42,8 @@ export function TransfersBySizeForm() {
           const widthId = `size-${field.id}-width`;
           const quantityId = `size-${field.id}-quantity`;
           return (
-            <fieldset key={field.fieldKey} className="rounded-control border border-border bg-panel p-4">
-              <legend className="px-2 font-display text-lg uppercase text-text-primary">Size {String(index + 1).padStart(2, "0")}</legend>
+            <fieldset key={field.fieldKey} className="rounded-control border border-border bg-panel p-4 shadow-[var(--card-shadow)]">
+              <legend className="px-2 font-display text-lg font-semibold text-text-primary">Size {String(index + 1).padStart(2, "0")}</legend>
               <input type="hidden" {...register(`sizes.${index}.id`)} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <div><label htmlFor={widthId} className={labelClassName}>Width <span className="text-text-muted">(in)</span></label><input id={widthId} type="number" step="any" inputMode="decimal" aria-describedby={`${widthId}-error`} aria-invalid={Boolean(formState.errors.sizes?.[index]?.width)} className={inputClassName} {...register(`sizes.${index}.width`)} /><FieldErrorMessage id={`${widthId}-error`} error={formState.errors.sizes?.[index]?.width} /></div>

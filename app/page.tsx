@@ -20,7 +20,7 @@ export default function Home() {
         <WorkflowSelector />
         <ProcessTimeline />
         <div className="section-space border-b border-border">
-          <div className="page-shell grid gap-px bg-border lg:grid-cols-3">
+          <div className="page-shell grid gap-5 lg:grid-cols-3">
             <QualityShowcase />
             <RepeatBusinessPanel />
             <AdditionalServices />

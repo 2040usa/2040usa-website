@@ -14,10 +14,10 @@ type ActionButtonProps = ComponentProps<"button"> & {
 
 function getButtonClasses(variant: "primary" | "secondary" | "quiet", className?: string) {
   return cn(
-    "inline-flex min-h-12 items-center justify-center gap-2 rounded-control border px-5 font-mono text-xs font-bold uppercase tracking-[0.16em] transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent disabled:cursor-not-allowed disabled:border-border disabled:bg-raised disabled:text-text-muted",
-    variant === "primary" && "border-accent bg-accent text-accent-foreground hover:bg-text-primary",
-    variant === "secondary" && "border-border bg-transparent text-text-primary hover:border-text-primary",
-    variant === "quiet" && "border-transparent px-0 text-text-primary hover:text-accent",
+    "inline-flex min-h-12 items-center justify-center gap-2 rounded-control border px-5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:border-border disabled:bg-disabled-background disabled:text-disabled-text",
+    variant === "primary" && "border-primary-action bg-primary-action text-primary-action-foreground hover:border-primary-action-hover hover:bg-primary-action-hover",
+    variant === "secondary" && "border-border-strong bg-secondary-action text-text-primary hover:border-primary-action hover:bg-raised",
+    variant === "quiet" && "border-transparent px-0 text-text-primary hover:text-primary-action",
     className,
   );
 }

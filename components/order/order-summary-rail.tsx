@@ -9,12 +9,12 @@ export function OrderSummaryRail({ route, artworkAcknowledged }: { route: OrderR
   const option = getOrderRouteOption(route);
   const { records, readiness } = useArtwork();
   return (
-    <aside className="h-fit min-w-0 rounded-control border border-border bg-panel p-5 lg:sticky lg:top-5" aria-labelledby="draft-summary-title">
-      <div className="flex items-center justify-between gap-3"><p id="draft-summary-title" className="font-mono text-[0.6rem] font-bold uppercase tracking-widest text-accent">Current draft</p><StatusBadge tone="neutral">Durable draft</StatusBadge></div>
-      <p className="mt-5 font-display text-2xl uppercase leading-none text-text-primary">{option.name}</p>
+    <aside className="h-fit min-w-0 rounded-control border border-border bg-panel p-5 shadow-[var(--card-shadow)] lg:sticky lg:top-5" aria-labelledby="draft-summary-title">
+      <div className="flex items-center justify-between gap-3"><p id="draft-summary-title" className="text-sm font-semibold text-text-primary">Current draft</p><StatusBadge tone="neutral">Saved draft</StatusBadge></div>
+      <p className="mt-5 font-display text-2xl font-semibold leading-tight text-text-primary">{option.name}</p>
       <p className="mt-3 text-xs leading-5 text-text-muted">{option.description}</p>
-      <div className="mt-5 flex items-start gap-3 border-t border-border pt-4"><FileCheck2 aria-hidden="true" className="mt-0.5 shrink-0 text-accent" size={16} /><div><p className="font-mono text-[0.52rem] uppercase tracking-widest text-text-muted">Artwork</p><p className="mt-1 text-xs text-text-primary">{records.filter((record) => record.status === "uploaded").length} uploaded · {formatBytes(readiness.totalVerifiedBytes)}</p><p className="mt-1 text-xs text-text-muted">{readiness.ready && artworkAcknowledged ? "Ready and acknowledged" : readiness.ready ? "Ready to continue" : "Incomplete"}</p></div></div>
-      <p className="mt-5 border-t border-border pt-4 font-mono text-[0.52rem] uppercase leading-5 tracking-widest text-text-muted">Saved project details return after refresh. No customer order exists.</p>
+      <div className="mt-5 flex items-start gap-3 border-t border-border pt-4"><FileCheck2 aria-hidden="true" className="mt-0.5 shrink-0 text-primary-action" size={16} /><div><p className="text-xs font-semibold text-text-secondary">Artwork</p><p className="mt-1 text-xs text-text-primary">{records.filter((record) => record.status === "uploaded").length} uploaded · {formatBytes(readiness.totalVerifiedBytes)}</p><p className="mt-1 text-xs text-text-muted">{readiness.ready && artworkAcknowledged ? "Ready and acknowledged" : readiness.ready ? "Ready to continue" : "Incomplete"}</p></div></div>
+      <p className="mt-5 border-t border-border pt-4 text-xs leading-5 text-text-muted">Saved project details return after refresh. No customer order exists.</p>
     </aside>
   );
 }

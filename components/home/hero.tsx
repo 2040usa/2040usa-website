@@ -8,17 +8,17 @@ export function Hero() {
     <section id="top" className="border-b border-border pb-14 pt-12 sm:pb-18 sm:pt-16 lg:pb-20 lg:pt-20" aria-labelledby="hero-heading">
       <div className="page-shell grid items-center gap-10 lg:grid-cols-[0.84fr_1.16fr] lg:gap-12">
         <Reveal>
-          <SectionLabel>DTF production / Downtown Los Angeles</SectionLabel>
-          <h1 id="hero-heading" className="mt-6 max-w-4xl font-display text-[clamp(3.4rem,7.2vw,7rem)] uppercase leading-[0.82] tracking-[-0.045em] text-text-primary">
-            DTF printing<br />without the<br /><span className="text-accent">back-and-forth.</span>
+          <SectionLabel>DTF printing in Downtown Los Angeles</SectionLabel>
+          <h1 id="hero-heading" className="mt-6 max-w-4xl font-display text-[clamp(3.1rem,6.8vw,6.5rem)] font-semibold leading-[0.94] tracking-[-0.045em] text-text-primary">
+            DTF printing<br />without the<br /><span className="text-primary-action">back-and-forth.</span>
           </h1>
           <p className="mt-7 max-w-lg text-base leading-7 text-text-muted">See the available starting routes, understand the production path, and prepare a transfer request for Downtown Los Angeles pickup.</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button href="/order/start" showArrow>Start a Print</Button>
             <Button href="#process" variant="secondary">See How It Works</Button>
           </div>
-          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 font-mono text-[0.62rem] uppercase tracking-[0.14em] text-text-muted">
-            <span><b className="text-text-primary">01</b> Local pickup</span><span><b className="text-text-primary">02</b> Artwork review</span><span><b className="text-text-primary">03</b> Repeat-run reference</span>
+          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-text-secondary">
+            <span><b className="mr-1 text-text-primary">01</b> Local pickup</span><span><b className="mr-1 text-text-primary">02</b> Artwork review</span><span><b className="mr-1 text-text-primary">03</b> Repeat-run reference</span>
           </div>
         </Reveal>
         <Reveal><ArtworkDropzonePreview /></Reveal>

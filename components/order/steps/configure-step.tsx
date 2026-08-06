@@ -13,8 +13,8 @@ export function ConfigureStep() {
   return (
     <OrderRouteGuard step="configure">
       {selectedRoute && <div>
-        <p className="font-mono text-[0.62rem] font-bold uppercase tracking-[0.16em] text-accent">03 / Project details</p>
-        <h1 className="mt-4 max-w-4xl font-display text-4xl uppercase leading-[0.92] text-text-primary sm:text-6xl">Describe the project.</h1>
+        <p className="text-sm font-semibold text-text-secondary">Step 3 · Project details</p>
+        <h1 className="mt-4 max-w-4xl font-display text-4xl font-semibold leading-tight tracking-[-0.03em] text-text-primary sm:text-6xl">Describe the project.</h1>
         <p className="mt-5 max-w-2xl text-sm leading-6 text-text-muted">Fields below are specific to <span className="text-text-primary">{getOrderRouteOption(selectedRoute).name}</span>. No pricing is calculated and nothing is submitted.</p>
         <div className="mt-8">
           {selectedRoute === "gang-sheet" && <GangSheetForm />}

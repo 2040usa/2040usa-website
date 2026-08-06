@@ -11,15 +11,15 @@ const navItems = [
 
 export function SiteHeader() {
   return (
-    <header className="relative z-50 border-b border-border bg-background">
+    <header className="relative z-50 border-b border-border bg-panel">
       <div className="page-shell flex h-16 items-center justify-between gap-6 sm:h-18">
-        <Link href="#top" className="group flex items-center gap-3 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent" aria-label="2040 USA home">
-          <span className="font-display text-2xl uppercase tracking-[-0.03em] text-text-primary sm:text-3xl">2040</span>
-          <span className="font-mono text-[0.58rem] font-bold uppercase tracking-[0.12em] text-accent">USA</span>
+        <Link href="#top" className="group flex items-center gap-3 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring" aria-label="2040 USA home">
+          <span className="font-display text-2xl font-bold tracking-[-0.03em] text-text-primary sm:text-3xl">2040</span>
+          <span className="text-xs font-semibold tracking-[0.08em] text-primary-action">USA</span>
         </Link>
         <nav className="hidden items-center gap-7 lg:flex" aria-label="Primary navigation">
           {navItems.map((item) => (
-            <Link key={item.href} href={item.href} className="font-mono text-[0.68rem] uppercase tracking-[0.16em] text-text-muted transition-colors hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent">
+            <Link key={item.href} href={item.href} className="text-sm font-medium text-text-secondary transition-colors hover:text-primary-action focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">
               {item.label}
             </Link>
           ))}

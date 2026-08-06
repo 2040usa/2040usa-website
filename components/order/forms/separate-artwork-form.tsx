@@ -42,8 +42,8 @@ export function SeparateArtworkForm() {
           const widthId = `design-${field.id}-width`;
           const quantityId = `design-${field.id}-quantity`;
           return (
-            <fieldset key={field.fieldKey} className="rounded-control border border-border bg-panel p-4 sm:p-5">
-              <legend className="px-2 font-display text-xl uppercase text-text-primary">Design {String(index + 1).padStart(2, "0")}</legend>
+            <fieldset key={field.fieldKey} className="rounded-control border border-border bg-panel p-4 shadow-[var(--card-shadow)] sm:p-5">
+              <legend className="px-2 font-display text-xl font-semibold text-text-primary">Design {String(index + 1).padStart(2, "0")}</legend>
               <input type="hidden" {...register(`designs.${index}.id`)} />
               <div className="grid gap-4 sm:grid-cols-[1.4fr_0.8fr_0.7fr]">
                 <div><label htmlFor={labelId} className={labelClassName}>Internal design label</label><input id={labelId} type="text" aria-describedby={`${labelId}-error`} aria-invalid={Boolean(formState.errors.designs?.[index]?.label)} className={inputClassName} {...register(`designs.${index}.label`)} /><FieldErrorMessage id={`${labelId}-error`} error={formState.errors.designs?.[index]?.label} /></div>
