@@ -16,7 +16,11 @@ export async function POST(request: Request, context: { params: Promise<{ artwor
   try {
     const { draftId } = artworkIdentityRequestSchema.parse(await readJsonBody(request));
     const artwork = await readArtworkWithStorageIdentity(artworkId.data, draftId, owner.ownerUserId);
-    if (!artwork || artwork.status !== "uploaded" || !["png", "jpg", "jpeg", "webp"].includes(artwork.extension)) return apiError(404, "NOT_FOUND", "Preview not found.");
+    // Records can disappear between a canonical snapshot render and route-change,
+    // replacement, or deletion cleanup. A private empty result avoids turning that
+    // expected race into a browser-level failed resource while disclosing no record
+    // existence to a caller that does not own the artwork.
+    if (!artwork || artwork.status !== "uploaded" || !["png", "jpg", "jpeg", "webp"].includes(artwork.extension)) return privateJson({ url: null, expiresIn: 0 });
     return privateJson({ url: await createArtworkPreviewUrl(artwork.storagePath, PREVIEW_URL_SECONDS), expiresIn: PREVIEW_URL_SECONDS });
   } catch (error) { return artworkApiFailure(error); }
 }

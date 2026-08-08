@@ -62,21 +62,21 @@ export async function updateDraftForOwner(input: {
     const existing = await transaction.orderDraft.findFirst({ where: { id: input.id, ownerUserId: input.ownerUserId, status: "active" } });
     if (!existing) return null;
     if (existing.version !== input.expectedVersion) throw new DraftConflictError("Draft version conflict.");
-    if (input.selectedRoute === "individual-designs") {
+    if (input.selectedRoute) {
+      const purpose = input.selectedRoute === "gang-sheet" ? "gang-sheet-file" : "individual-design";
       const artwork = await transaction.artworkFile.findMany({
-        where: { draftId: input.id, ownerUserId: input.ownerUserId, route: "individual-designs", purpose: "individual-design", status: "uploaded" },
+        where: { draftId: input.id, ownerUserId: input.ownerUserId, route: input.selectedRoute, purpose, status: "uploaded" },
         select: { id: true },
       });
       const canonicalIds = new Set(artwork.map((record) => record.id));
-      const working = input.workingConfiguration && typeof input.workingConfiguration === "object" && "route" in input.workingConfiguration && input.workingConfiguration.route === "individual-designs"
-        ? input.workingConfiguration as unknown as { designs: { artworkId: string }[] } : null;
-      if (working && working.designs.some((design) => !canonicalIds.has(design.artworkId))) throw new DraftArtworkConfigurationError("Working configuration references unavailable artwork.");
-      const completed = input.configuration && typeof input.configuration === "object" && "route" in input.configuration && input.configuration.route === "individual-designs"
-        ? input.configuration as unknown as { designs: { artworkId: string }[] } : null;
+      const entryKey = input.selectedRoute === "gang-sheet" ? "sheets" : "designs";
+      const working = configurationEntries(input.workingConfiguration, input.selectedRoute, entryKey);
+      if (working && working.some((entry) => !canonicalIds.has(entry.artworkId))) throw new DraftArtworkConfigurationError("Working configuration references unavailable artwork.");
+      const completed = configurationEntries(input.configuration, input.selectedRoute, entryKey);
       if (completed) {
-        const configuredIds = new Set(completed.designs.map((design) => design.artworkId));
-        if (configuredIds.size !== completed.designs.length || configuredIds.size !== canonicalIds.size || [...canonicalIds].some((id) => !configuredIds.has(id))) {
-          throw new DraftArtworkConfigurationError("Completed configuration must match every uploaded design.");
+        const configuredIds = new Set(completed.map((entry) => entry.artworkId));
+        if (configuredIds.size !== completed.length || configuredIds.size !== canonicalIds.size || [...canonicalIds].some((id) => !configuredIds.has(id))) {
+          throw new DraftArtworkConfigurationError("Completed configuration must match every uploaded artwork file.");
         }
       }
     }
@@ -93,6 +93,13 @@ export async function updateDraftForOwner(input: {
     });
     return databaseDraftToCanonical(result);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+function configurationEntries(value: unknown, route: OrderRoute, entryKey: "sheets" | "designs") {
+  if (!value || typeof value !== "object") return null;
+  const object = value as Record<string, unknown>;
+  if (object.route !== route || !Array.isArray(object[entryKey])) return null;
+  return object[entryKey].flatMap((entry) => entry && typeof entry === "object" && "artworkId" in entry && typeof entry.artworkId === "string" ? [{ artworkId: entry.artworkId }] : []);
 }
 
 export async function resetDraftForOwner(id: string, ownerUserId: string, expectedVersion: number) {

@@ -22,11 +22,20 @@ const artworkIdSchema = z.uuid("Artwork identifier is invalid.");
 
 export const orderRouteSchema = z.enum(ORDER_ROUTE_VALUES);
 
-export const gangSheetConfigurationSchema = z.object({
-  route: z.literal("gang-sheet"),
-  sheetCount: z.preprocess(numericInput, positiveNumberSchema("Number of sheets").int("Number of sheets must be a whole number.").max(MAX_PRINT_QUANTITY)),
+const gangSheetFileSchema = z.object({
+  artworkId: artworkIdSchema,
+  copies: quantity,
   finishedWidth: boundedDimension("Finished width"),
   finishedLength: boundedDimension("Finished length"),
+}).strict();
+
+function uniqueArtworkIds<T extends { artworkId: string }>(rows: T[], context: z.RefinementCtx) {
+  if (new Set(rows.map((row) => row.artworkId)).size !== rows.length) context.addIssue({ code: "custom", message: "Each artwork file may be configured only once." });
+}
+
+export const gangSheetConfigurationSchema = z.object({
+  route: z.literal("gang-sheet"),
+  sheets: z.array(gangSheetFileSchema).min(1, "Upload and configure at least one gang sheet.").max(MAX_DYNAMIC_ROWS).superRefine(uniqueArtworkIds),
   notes: notesSchema,
 }).strict();
 
@@ -57,7 +66,7 @@ const individualDesignSchema = z.object({
 export const individualDesignsConfigurationSchema = z.object({
   route: z.literal("individual-designs"),
   designs: z.array(individualDesignSchema).min(1, "Upload and configure at least one design.").max(MAX_DYNAMIC_ROWS).superRefine((designs, context) => {
-    if (new Set(designs.map((design) => design.artworkId)).size !== designs.length) context.addIssue({ code: "custom", message: "Each artwork file may be configured only once." });
+    uniqueArtworkIds(designs, context);
   }),
   notes: notesSchema,
 }).strict();
@@ -78,6 +87,42 @@ const workingDesignSchema = z.object({
   wantsChanges: z.union([z.literal(""), z.literal("no"), z.literal("yes")]),
   changeInstructions: z.string().max(MAX_CHANGE_INSTRUCTIONS_LENGTH),
 }).strict();
+
+const workingGangSheetFileSchema = z.object({
+  artworkId: artworkIdSchema,
+  copies: workingNumericSchema,
+  finishedWidth: workingNumericSchema,
+  finishedLength: workingNumericSchema,
+}).strict();
+
+export const gangSheetFormSchema = z.object({
+  route: z.literal("gang-sheet"),
+  sheets: z.array(workingGangSheetFileSchema).min(1, "Upload and configure at least one gang sheet.").max(MAX_DYNAMIC_ROWS),
+  notes: workingTextSchema,
+}).strict().superRefine((configuration, context) => {
+  uniqueArtworkIds(configuration.sheets, context);
+  configuration.sheets.forEach((sheet, index) => {
+    const copies = Number(sheet.copies);
+    if (!Number.isInteger(copies) || copies < 1 || copies > MAX_PRINT_QUANTITY) {
+      context.addIssue({ code: "custom", path: ["sheets", index, "copies"], message: `Enter whole-number copies from 1 to ${MAX_PRINT_QUANTITY}.` });
+    }
+    for (const [field, label] of [["finishedWidth", "Finished width"], ["finishedLength", "Finished length"]] as const) {
+      const dimension = Number(sheet[field]);
+      if (!Number.isFinite(dimension) || dimension <= 0 || dimension > MAX_PRINT_DIMENSION_INCHES) {
+        context.addIssue({ code: "custom", path: ["sheets", index, field], message: `${label} must be greater than 0 and no more than ${MAX_PRINT_DIMENSION_INCHES} inches.` });
+      }
+    }
+  });
+}).transform((configuration) => gangSheetConfigurationSchema.parse({
+  route: configuration.route,
+  notes: configuration.notes,
+  sheets: configuration.sheets.map((sheet) => ({
+    artworkId: sheet.artworkId,
+    copies: Number(sheet.copies),
+    finishedWidth: Number(sheet.finishedWidth),
+    finishedLength: Number(sheet.finishedLength),
+  })),
+}));
 
 export const individualDesignsFormSchema = z.object({
   route: z.literal("individual-designs"),
@@ -123,7 +168,7 @@ export const individualDesignsFormSchema = z.object({
 }));
 
 export const workingOrderConfigurationSchema = z.discriminatedUnion("route", [
-  z.object({ route: z.literal("gang-sheet"), sheetCount: workingNumericSchema, finishedWidth: workingNumericSchema, finishedLength: workingNumericSchema, notes: workingTextSchema }).strict(),
+  z.object({ route: z.literal("gang-sheet"), sheets: z.array(workingGangSheetFileSchema).max(MAX_DYNAMIC_ROWS).superRefine(uniqueArtworkIds), notes: workingTextSchema }).strict(),
   z.object({
     route: z.literal("individual-designs"),
     designs: z.array(workingDesignSchema).max(MAX_DYNAMIC_ROWS).superRefine((designs, context) => {

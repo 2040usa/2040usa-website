@@ -14,4 +14,6 @@ Both Increment 2A migrations were applied only to `bcalocreiqbyufnakrnq`. `20260
 
 20260806000100_consolidate_gang_sheet_routes.sql is the forward-only Increment 3B migration. It preserves gang-sheet rows. It maps the three historical non-gang-sheet routes to individual-designs, maps their artwork to the canonical individual-design purpose, preserves artwork UUIDs and Storage paths, clears untrustworthy detached configuration, revokes artwork acknowledgment, increments affected draft versions, and replaces the route/purpose compatibility constraints. The artwork immutability trigger is disabled only around the controlled migration update and immediately re-enabled. Its final assertion fails the migration if any legacy active value remains.
 
+`20260807000100_link_gang_sheet_configuration_to_artwork.sql` converts legacy global Print-Ready Gang Sheet configuration. A valid single-upload configuration is rebound to that canonical artwork UUID. Ambiguous multiple-upload completion is cleared, while project notes and incomplete per-file working cards are preserved. The migration does not modify artwork rows, private paths, or Storage objects.
+
 No remote reset occurred. Empty-database replay remains unproven because Docker, a disposable project, and a Supabase branch are unavailable.

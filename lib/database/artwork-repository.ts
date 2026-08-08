@@ -377,9 +377,10 @@ export async function prepareArtworkDeletion(input: {
     });
     const readiness = calculateArtworkReadiness(draft.selectedRoute as OrderRoute | null, remaining.map(databaseArtworkToCanonical));
     const revokeProgress = !readiness.ready && (draft.artworkAcknowledged || draft.configuration !== null);
-    const prunedWorking = draft.selectedRoute === "individual-designs" ? pruneArtworkConfiguration(draft.workingConfiguration, artwork.id) : draft.workingConfiguration;
-    const prunedCompleted = draft.selectedRoute === "individual-designs" ? pruneArtworkConfiguration(draft.configuration, artwork.id) : draft.configuration;
-    const configurationChanged = draft.selectedRoute === "individual-designs"
+    const artworkLinkedRoute = draft.selectedRoute === "individual-designs" || draft.selectedRoute === "gang-sheet";
+    const prunedWorking = artworkLinkedRoute ? pruneArtworkConfiguration(draft.workingConfiguration, artwork.id) : draft.workingConfiguration;
+    const prunedCompleted = artworkLinkedRoute ? pruneArtworkConfiguration(draft.configuration, artwork.id) : draft.configuration;
+    const configurationChanged = artworkLinkedRoute
       && (!isDeepStrictEqual(prunedWorking, draft.workingConfiguration) || !isDeepStrictEqual(prunedCompleted, draft.configuration));
     const preparedDraft = revokeProgress || configurationChanged
       ? await transaction.orderDraft.update({
@@ -406,7 +407,7 @@ export async function rebindReplacementConfigurationForOwner(input: { artworkId:
       where: { id: input.artworkId, draftId: input.draftId, ownerUserId: input.ownerUserId, status: "uploaded" },
     });
     const draft = await transaction.orderDraft.findFirst({ where: { id: input.draftId, ownerUserId: input.ownerUserId, status: "active" } });
-    if (!artwork || !draft || !artwork.replacementForId || draft.selectedRoute !== "individual-designs") {
+    if (!artwork || !draft || !artwork.replacementForId || (draft.selectedRoute !== "individual-designs" && draft.selectedRoute !== "gang-sheet")) {
       return draft ? databaseDraftToCanonical(draft) : null;
     }
     const workingConfiguration = rebindArtworkConfiguration(draft.workingConfiguration, artwork.replacementForId, artwork.id);
@@ -430,14 +431,17 @@ export async function synchronizeUploadedArtworkConfigurationForOwner(input: { a
   return prisma.$transaction(async (transaction) => {
     await transaction.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${input.draftId}, 0))`;
     const artwork = await transaction.artworkFile.findFirst({
-      where: { id: input.artworkId, draftId: input.draftId, ownerUserId: input.ownerUserId, route: "individual-designs", purpose: "individual-design", status: "uploaded" },
+      where: { id: input.artworkId, draftId: input.draftId, ownerUserId: input.ownerUserId, status: "uploaded" },
     });
-    const draft = await transaction.orderDraft.findFirst({ where: { id: input.draftId, ownerUserId: input.ownerUserId, status: "active", selectedRoute: "individual-designs" } });
-    if (!artwork || !draft) return draft ? databaseDraftToCanonical(draft) : null;
-    const workingConfiguration = addWorkingArtwork(draft.workingConfiguration, artwork.id);
+    const draft = await transaction.orderDraft.findFirst({ where: { id: input.draftId, ownerUserId: input.ownerUserId, status: "active" } });
+    if (!artwork || !draft || artwork.route !== draft.selectedRoute || artwork.purpose !== ARTWORK_POLICY_BY_ROUTE[draft.selectedRoute as OrderRoute]?.purpose) return draft ? databaseDraftToCanonical(draft) : null;
+    const route = draft.selectedRoute as OrderRoute;
+    const workingConfiguration = addWorkingArtwork(draft.workingConfiguration, route, artwork.id);
     const completedIds = draft.configuration && typeof draft.configuration === "object" && "route" in draft.configuration
-      && draft.configuration.route === "individual-designs" && "designs" in draft.configuration && Array.isArray(draft.configuration.designs)
-      ? new Set(draft.configuration.designs.flatMap((design) => design && typeof design === "object" && "artworkId" in design && typeof design.artworkId === "string" ? [design.artworkId] : []))
+      && draft.configuration.route === route
+      ? new Set((route === "gang-sheet" && "sheets" in draft.configuration && Array.isArray(draft.configuration.sheets) ? draft.configuration.sheets
+        : route === "individual-designs" && "designs" in draft.configuration && Array.isArray(draft.configuration.designs) ? draft.configuration.designs : [])
+        .flatMap((entry) => entry && typeof entry === "object" && "artworkId" in entry && typeof entry.artworkId === "string" ? [entry.artworkId] : []))
       : null;
     const configuration = completedIds?.has(artwork.id) ? draft.configuration : null;
     const changed = !isDeepStrictEqual(workingConfiguration, draft.workingConfiguration)

@@ -17,9 +17,7 @@ import { ActionButton } from "@/components/ui/button";
 import { FieldErrorMessage, FormErrorSummary, inputClassName, labelClassName } from "@/components/order/forms/form-feedback";
 import { useWorkingConfiguration } from "@/components/order/forms/use-working-configuration";
 import { StepActions } from "@/components/order/step-actions";
-import { formatBytes } from "@/lib/artwork/constants";
-import { ArtworkPreview } from "@/components/artwork/artwork-file-list";
-import { isPreviewableArtwork } from "@/lib/artwork/file-validation";
+import { ArtworkIdentity } from "@/components/artwork/artwork-preview";
 
 type IndividualDesignsControl = Control<WorkingIndividualDesignsConfiguration, unknown, IndividualDesignsFormValues>;
 
@@ -120,10 +118,7 @@ function DesignCard({ record, designIndex, control, register, setValue, errors }
   return <fieldset className="min-w-0 rounded-control border border-border bg-panel p-4 shadow-[var(--card-shadow)] sm:p-5">
     <legend className="max-w-full break-words px-2 font-display text-xl font-semibold text-text-primary">{record.originalName}</legend>
     <input type="hidden" {...register(`designs.${designIndex}.artworkId`)} />
-    <div className="flex min-w-0 items-center gap-4">
-      {isPreviewableArtwork(record.extension) && <ArtworkPreview record={record} />}
-      <p className="min-w-0 break-words text-xs text-text-muted">{record.mimeType} · {formatBytes(record.verifiedSizeBytes ?? record.declaredSizeBytes)}</p>
-    </div>
+    <ArtworkIdentity record={record} className="mb-5" />
     <SizeVariants designIndex={designIndex} control={control} register={register} setValue={setValue} errors={errors} />
     <fieldset className="mt-5 border-t border-border pt-5">
       <legend className="text-sm font-semibold text-text-primary">Do you want us to make changes to this artwork?</legend>

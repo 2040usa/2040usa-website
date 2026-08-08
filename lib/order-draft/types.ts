@@ -13,11 +13,16 @@ export type IndividualDesignConfiguration = {
   changeInstructions: string;
 };
 
-export type GangSheetConfiguration = {
-  route: "gang-sheet";
-  sheetCount: number;
+export type GangSheetFileConfiguration = {
+  artworkId: string;
+  copies: number;
   finishedWidth: number;
   finishedLength: number;
+};
+
+export type GangSheetConfiguration = {
+  route: "gang-sheet";
+  sheets: GangSheetFileConfiguration[];
   notes: string;
 };
 
@@ -31,10 +36,15 @@ export type OrderConfiguration = GangSheetConfiguration | IndividualDesignsConfi
 
 export type WorkingGangSheetConfiguration = {
   route: "gang-sheet";
-  sheetCount: string;
+  sheets: WorkingGangSheetFileConfiguration[];
+  notes: string;
+};
+
+export type WorkingGangSheetFileConfiguration = {
+  artworkId: string;
+  copies: string;
   finishedWidth: string;
   finishedLength: string;
-  notes: string;
 };
 
 export type WorkingSizeVariant = {

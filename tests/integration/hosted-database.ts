@@ -24,7 +24,7 @@ export async function runHostedDatabaseTests(input: { pool: Pool; ownerA: string
       selectedRoute: "gang-sheet",
       startingPointConfirmed: true,
       artworkAcknowledged: true,
-      workingConfiguration: { route: "gang-sheet", sheetCount: "", finishedWidth: "22", finishedLength: "36", notes: "first atomic response" },
+      workingConfiguration: { route: "gang-sheet", sheets: [], notes: "first atomic response" },
       configuration: null,
     });
     assert.equal(firstWrite?.version, first.version + 1, "A successful update increments version exactly once.");
@@ -35,7 +35,7 @@ export async function runHostedDatabaseTests(input: { pool: Pool; ownerA: string
       selectedRoute: "gang-sheet",
       startingPointConfirmed: true,
       artworkAcknowledged: true,
-      workingConfiguration: { route: "gang-sheet", sheetCount: "2", finishedWidth: "22", finishedLength: "36", notes: "later writer" },
+      workingConfiguration: { route: "gang-sheet", sheets: [], notes: "later writer" },
       configuration: null,
     });
     assert.equal(firstWrite?.version, first.version + 1);
@@ -84,7 +84,7 @@ export async function runHostedDatabaseTests(input: { pool: Pool; ownerA: string
       finally { await pool.query("rollback"); }
     }
 
-    const invalidCompleted = draftSnapshotRequestSchema.safeParse({ expectedVersion: routed.version, selectedRoute: "gang-sheet", startingPointConfirmed: true, artworkAcknowledged: true, workingConfiguration: null, configuration: { route: "gang-sheet", sheetCount: 0, finishedWidth: 22, finishedLength: 36, notes: "" } });
+    const invalidCompleted = draftSnapshotRequestSchema.safeParse({ expectedVersion: routed.version, selectedRoute: "gang-sheet", startingPointConfirmed: true, artworkAcknowledged: true, workingConfiguration: null, configuration: { route: "gang-sheet", sheets: [], notes: "" } });
     assert.equal(invalidCompleted.success, false, "Invalid completed configuration is rejected before repository persistence.");
   } finally {
     await pool.query("delete from public.order_drafts where owner_user_id = any($1::uuid[])", [[ownerA, ownerB]]);

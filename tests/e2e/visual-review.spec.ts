@@ -51,6 +51,7 @@ async function mockIndividualDraft(page: Page, completed: boolean) {
   await page.route("**/api/order-drafts/current", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ draft }) }));
   await page.route(`**/api/order-drafts/${visualDraftId}/artwork`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(snapshot) }));
   await page.route(`**/api/order-drafts/${visualDraftId}/artwork/reconcile`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(snapshot) }));
+  await page.route(`**/api/artwork/${visualArtworkId}/preview-url`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", expiresIn: 60 }) }));
   await page.route(`**/api/order-drafts/${visualDraftId}`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ draft: { ...draft, version: 5 } }) }));
 }
 
@@ -116,7 +117,7 @@ for (const viewport of viewports) {
     await mockIndividualDraft(page, false);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/order/configure");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Describe the project.");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Configure each artwork file.");
     await expect(page.getByRole("group", { name: /a-very-long-individual-design-filename/ })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     await expect(page.locator("h1")).toHaveCount(1);

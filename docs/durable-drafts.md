@@ -8,7 +8,7 @@ Route confirmation uses the same serialized mutation coordinator as autosave, ex
 
 The server derives ownership from verified claims and completion from canonical fields. `updateManyAndReturn` checks owner, ID, active status, and version and returns the row produced by that statement. Success increments once. A stale request returns `VERSION_CONFLICT`/409 without overwrite.
 
-Working configuration mirrors controls and may be temporarily invalid. Completed configuration passes the strict route-specific Zod schema and alone permits Review. For Individual Designs, the server additionally requires every artwork UUID to be owner-scoped, attached to the active draft, uploaded, non-deleting, route/purpose compatible, unique, and an exact match for the current required artwork set.
+Working configuration mirrors controls and may be temporarily invalid. Completed configuration passes the strict route-specific Zod schema and alone permits Review. For both routes, the server additionally requires every artwork UUID to be owner-scoped, attached to the active draft, uploaded, non-deleting, route/purpose compatible, unique, and an exact match for the current required artwork set.
 
 Hydration distinguishes a durable draft, a genuine empty result, Auth verification failure, backend failure, and malformed response. Unknown state keeps guarded content closed and exposes Retry; it is never converted into an empty draft.
 
@@ -16,6 +16,6 @@ Typing autosaves through a serialized debounce. Increment 2B replaces informatio
 
 Route changes and Start Over first serialize draft writes and prepare cleanup under the same per-draft advisory lock. Preparation marks all records deleting and revokes acknowledged/validated progress before any external Storage call. Exact owner-scoped objects and rows are then removed before route change/reset uses the post-preparation version. Partial cleanup keeps the prior route, applies the canonical revoked state, and remains retryable. Anonymous Auth cleanup remains a later operational concern.
 
-Individual-design completion, deletion, and replacement reuse the per-draft advisory lock when synchronizing JSON configuration. A new file adds an incomplete working card and invalidates obsolete completion; deletion prunes the linked card; replacement rebinds both working and completed configuration before the former object is removed. Canonical snapshots and monotonic record versions still prevent stale responses from resurrecting or downgrading artwork.
+Artwork completion, deletion, and replacement reuse the per-draft advisory lock when synchronizing JSON configuration for either route. A new file adds an incomplete working card and invalidates obsolete completion; deletion prunes the linked card; replacement rebinds both working and completed configuration before the former object is removed. Canonical snapshots and monotonic record versions still prevent stale responses from resurrecting or downgrading artwork.
 
 Final route mutation/reset occurs in a second serializable transaction that reacquires the lock and requires zero artwork rows. A reservation appearing during external cleanup blocks finalization with ARTWORK_CLEANUP_INCOMPLETE. Acknowledgment remains bound to the caller's submitted expected version; stale requests cannot acknowledge a newer draft.

@@ -12,8 +12,8 @@ export function ConfigureStep() {
     <OrderRouteGuard step="configure">
       {selectedRoute && <div>
         <p className="text-sm font-semibold text-text-secondary">Step 3 · Project details</p>
-        <h1 className="mt-4 max-w-4xl font-display text-4xl font-semibold leading-tight tracking-[-0.03em] text-text-primary sm:text-6xl">Describe the project.</h1>
-        <p className="mt-5 max-w-2xl text-sm leading-6 text-text-muted">Fields below are specific to <span className="text-text-primary">{getOrderRouteOption(selectedRoute).name}</span>. No pricing is calculated and nothing is submitted.</p>
+        <h1 className="mt-4 max-w-4xl font-display text-4xl font-semibold leading-tight tracking-[-0.03em] text-text-primary sm:text-6xl">Configure each artwork file.</h1>
+        <p className="mt-5 max-w-2xl text-sm leading-6 text-text-muted">Each card below is linked directly to a verified upload for <span className="text-text-primary">{getOrderRouteOption(selectedRoute).name}</span>. No pricing is calculated and nothing is submitted.</p>
         <div className="mt-8">
           {selectedRoute === "gang-sheet" && <GangSheetForm />}
           {selectedRoute === "individual-designs" && <IndividualDesignsForm />}

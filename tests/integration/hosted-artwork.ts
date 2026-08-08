@@ -104,8 +104,8 @@ export async function runHostedArtworkTests(input: { pool: Pool; userA: HostedOw
       selectedRoute: "gang-sheet",
       startingPointConfirmed: true,
       artworkAcknowledged: true,
-      workingConfiguration: { route: "gang-sheet", sheetCount: "2", finishedWidth: "22", finishedLength: "36", notes: "newer" },
-      configuration: { route: "gang-sheet", sheetCount: 2, finishedWidth: 22, finishedLength: 36, notes: "newer" },
+      workingConfiguration: { route: "gang-sheet", sheets: [{ artworkId: reservedA.record.id, copies: "2", finishedWidth: "22", finishedLength: "36" }], notes: "newer" },
+      configuration: { route: "gang-sheet", sheets: [{ artworkId: reservedA.record.id, copies: 2, finishedWidth: 22, finishedLength: 36 }], notes: "newer" },
     });
     assert.ok(advanced);
     await assert.rejects(
@@ -120,6 +120,56 @@ export async function runHostedArtworkTests(input: { pool: Pool; userA: HostedOw
     );
     const afterStale = await readDraftForOwner(draftA.id, userA.userId);
     assert.deepEqual(afterStale?.configuration, advanced!.configuration, "Stale artwork operations preserve the newer validated state.");
+
+    await assert.rejects(() => updateDraftForOwner({
+      id: draftA.id,
+      ownerUserId: userA.userId,
+      expectedVersion: advanced!.version,
+      selectedRoute: "gang-sheet",
+      startingPointConfirmed: true,
+      artworkAcknowledged: true,
+      workingConfiguration: advanced!.workingConfiguration,
+      configuration: { route: "gang-sheet", sheets: [{ artworkId: reservedB.record.id, copies: 1, finishedWidth: 22, finishedLength: 36 }], notes: "" },
+    }), DraftArtworkConfigurationError, "Gang-sheet configuration cannot reference another owner's artwork.");
+
+    const secondGang = await reserveArtworkForOwner(reservation(userA.userId, draftA.id, "gang-second"));
+    assert.ok(secondGang);
+    paths.add(secondGang.storagePath);
+    assert.equal((await userA.client.storage.from(ARTWORK_BUCKET).upload(secondGang.storagePath, pngBytes, { contentType: "image/png", upsert: false })).error, null);
+    let gangDraft = (await readDraftForOwner(draftA.id, userA.userId))!;
+    await reconcileArtworkForOwner(draftA.id, userA.userId, gangDraft.version);
+    gangDraft = (await readDraftForOwner(draftA.id, userA.userId))!;
+    assert.equal(gangDraft.configuration, null, "Adding a gang-sheet file revokes obsolete completed configuration.");
+    assert.deepEqual(gangDraft.workingConfiguration?.route === "gang-sheet" ? gangDraft.workingConfiguration.sheets.map((sheet) => sheet.artworkId) : [], [reservedA.record.id, secondGang.record.id]);
+    const configuredGang = await updateDraftForOwner({
+      id: draftA.id,
+      ownerUserId: userA.userId,
+      expectedVersion: gangDraft.version,
+      selectedRoute: "gang-sheet",
+      startingPointConfirmed: true,
+      artworkAcknowledged: true,
+      workingConfiguration: gangDraft.workingConfiguration,
+      configuration: { route: "gang-sheet", sheets: [
+        { artworkId: reservedA.record.id, copies: 2, finishedWidth: 22, finishedLength: 36 },
+        { artworkId: secondGang.record.id, copies: 4, finishedWidth: 24, finishedLength: 48 },
+      ], notes: "Per-file" },
+    });
+    assert.ok(configuredGang);
+    const gangReplacement = await reserveArtworkForOwner({ ...reservation(userA.userId, draftA.id, "gang-replacement"), replacementForArtworkId: reservedA.record.id });
+    assert.ok(gangReplacement);
+    paths.add(gangReplacement.storagePath);
+    assert.equal((await userA.client.storage.from(ARTWORK_BUCKET).upload(gangReplacement.storagePath, pngBytes, { contentType: "image/png", upsert: false })).error, null);
+    await reconcileArtworkForOwner(draftA.id, userA.userId, configuredGang!.version);
+    gangDraft = (await readDraftForOwner(draftA.id, userA.userId))!;
+    const reboundGang = gangDraft.configuration?.route === "gang-sheet" ? gangDraft.configuration : null;
+    assert.equal(reboundGang?.sheets.some((sheet) => sheet.artworkId === reservedA.record.id), false);
+    assert.deepEqual(reboundGang?.sheets.find((sheet) => sheet.artworkId === gangReplacement.record.id), { artworkId: gangReplacement.record.id, copies: 2, finishedWidth: 22, finishedLength: 36 });
+    const secondCurrent = (await artworkSnapshotForOwner(draftA.id, userA.userId)).artwork.find((record) => record.id === secondGang.record.id)!;
+    const prunedGang = await prepareArtworkDeletion({ id: secondCurrent.id, draftId: draftA.id, ownerUserId: userA.userId, expectedArtworkVersion: secondCurrent.version, expectedDraftVersion: gangDraft.version });
+    assert.ok(prunedGang);
+    assert.deepEqual(prunedGang!.draft.configuration?.route === "gang-sheet" ? prunedGang!.draft.configuration.sheets.map((sheet) => sheet.artworkId) : [], [gangReplacement.record.id]);
+    await removeIfPresent(userA.client, secondGang.storagePath); paths.delete(secondGang.storagePath);
+    assert.equal(await deleteArtworkRowForOwner(secondGang.record.id, draftA.id, userA.userId), true);
 
     await removeIfPresent(userA.client, reservedA.storagePath); paths.delete(reservedA.storagePath);
     await removeIfPresent(userB.client, reservedB.storagePath); paths.delete(reservedB.storagePath);
@@ -249,7 +299,7 @@ export async function runHostedArtworkTests(input: { pool: Pool; userA: HostedOw
       startingPointConfirmed: true,
       artworkAcknowledged: true,
       workingConfiguration: null,
-      configuration: { route: "gang-sheet", sheetCount: 1, finishedWidth: 1, finishedLength: 1, notes: "cleanup" },
+      configuration: null,
     });
     assert.ok(configured);
     const cleanupCalls: string[] = [];

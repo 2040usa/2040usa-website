@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { MAX_DYNAMIC_ROWS, ORDER_ROUTE_VALUES } from "../lib/order-draft/constants";
 import { getEarliestIncompleteStep, getGuardRedirect, parseOrderRouteQuery } from "../lib/order-draft/navigation";
-import { gangSheetConfigurationSchema, individualDesignsConfigurationSchema, individualDesignsFormSchema, orderConfigurationSchema } from "../lib/order-draft/schemas";
+import { gangSheetConfigurationSchema, gangSheetFormSchema, individualDesignsConfigurationSchema, individualDesignsFormSchema, orderConfigurationSchema } from "../lib/order-draft/schemas";
 import { createOrderDraftStore } from "../lib/order-draft/store";
 import { formatConfigurationSummary } from "../lib/order-draft/summary";
 import { migrateLegacyRoute } from "../lib/order-draft/legacy-migration";
-import { pruneArtworkConfiguration, rebindArtworkConfiguration } from "../lib/order-draft/artwork-configuration";
+import { addWorkingArtwork, pruneArtworkConfiguration, rebindArtworkConfiguration } from "../lib/order-draft/artwork-configuration";
 import type { IndividualDesignsConfiguration, WorkingOrderConfiguration } from "../lib/order-draft/types";
 
 const artworkA = "00000000-0000-4000-8000-000000000001";
 const artworkB = "00000000-0000-4000-8000-000000000002";
-const gangSheet = { route: "gang-sheet" as const, sheetCount: 2, finishedWidth: 22, finishedLength: 36, notes: "Local launch" };
+const gangSheet = { route: "gang-sheet" as const, sheets: [{ artworkId: artworkA, copies: 2, finishedWidth: 22, finishedLength: 36 }], notes: "Local launch" };
 const individual: IndividualDesignsConfiguration = {
   route: "individual-designs",
   designs: [{ artworkId: artworkA, sizes: [
@@ -39,8 +39,10 @@ describe("two-route product model", () => {
 describe("route configuration schemas", () => {
   it("keeps gang-sheet configuration valid and bounded", () => {
     expect(gangSheetConfigurationSchema.safeParse(gangSheet).success).toBe(true);
-    expect(gangSheetConfigurationSchema.safeParse({ ...gangSheet, sheetCount: 1.5 }).success).toBe(false);
-    expect(gangSheetConfigurationSchema.safeParse({ ...gangSheet, finishedWidth: 0 }).success).toBe(false);
+    expect(gangSheetConfigurationSchema.safeParse({ ...gangSheet, sheets: [{ ...gangSheet.sheets[0], copies: 1.5 }] }).success).toBe(false);
+    expect(gangSheetConfigurationSchema.safeParse({ ...gangSheet, sheets: [{ ...gangSheet.sheets[0], finishedWidth: 0 }] }).success).toBe(false);
+    expect(gangSheetConfigurationSchema.safeParse({ ...gangSheet, sheets: [gangSheet.sheets[0], gangSheet.sheets[0]] }).success).toBe(false);
+    expect(gangSheetFormSchema.parse({ route: "gang-sheet", sheets: [{ artworkId: artworkA, copies: "3", finishedWidth: "22", finishedLength: "36" }], notes: "" }).sheets[0]).toEqual({ artworkId: artworkA, copies: 3, finishedWidth: 22, finishedLength: 36 });
   });
 
   it("accepts multiple designs and multiple mutually exclusive size variants", () => {
@@ -81,6 +83,13 @@ describe("artwork-linked synchronization", () => {
     expect(rebound.designs[0]).toMatchObject({ artworkId: artworkB, wantsChanges: true, changeInstructions: "Remove the background." });
     expect(rebound.designs[0].sizes).toEqual(individual.designs[0].sizes);
   });
+
+  it("adds, prunes, and rebinds gang-sheet artwork without losing per-file settings", () => {
+    const working = { route: "gang-sheet" as const, sheets: [{ artworkId: artworkA, copies: "3", finishedWidth: "22", finishedLength: "36" }], notes: "keep" };
+    expect(addWorkingArtwork(working, "gang-sheet", artworkB)).toEqual({ ...working, sheets: [...working.sheets, { artworkId: artworkB, copies: "1", finishedWidth: "", finishedLength: "" }] });
+    expect(pruneArtworkConfiguration(working, artworkA)).toEqual({ ...working, sheets: [] });
+    expect(rebindArtworkConfiguration(gangSheet, artworkA, artworkB)).toEqual({ ...gangSheet, sheets: [{ ...gangSheet.sheets[0], artworkId: artworkB }] });
+  });
 });
 
 describe("draft navigation and state", () => {
@@ -117,5 +126,10 @@ describe("review summary formatting", () => {
     expect(summary[0].title).toBe("front-logo.png");
     expect(JSON.stringify(summary)).toContain("Set by width: 11 in");
     expect(JSON.stringify(summary).toLowerCase()).not.toContain("price");
+  });
+
+  it("renders gang-sheet settings per original artwork filename", () => {
+    const summary = formatConfigurationSummary(gangSheet, [{ id: artworkA, originalName: "ready-sheet.png" } as never]);
+    expect(summary).toEqual([{ artworkId: artworkA, title: "ready-sheet.png", items: [{ label: "Finished size", value: "22 in × 36 in" }, { label: "Copies", value: "2" }] }]);
   });
 });

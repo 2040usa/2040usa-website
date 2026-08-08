@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateSelectedArtworkFile } from "@/lib/artwork/file-validation";
+import { isPreviewableArtwork, validateSelectedArtworkFile } from "@/lib/artwork/file-validation";
 import { calculateArtworkReadiness } from "@/lib/artwork/readiness";
 import { ARTWORK_POLICY_BY_ROUTE, formatBytes, purposeForRoute } from "@/lib/artwork/constants";
 import { createArtworkClientFingerprint } from "@/lib/artwork/fingerprint";
@@ -48,6 +48,11 @@ describe("artwork file validation", () => {
 
   it.each(["art\\work.png", "art/work.png", "art\u0000work.png", "   "])('rejects unsafe display name "%s"', (name) => {
     expect(() => validateSelectedArtworkFile({ name, size: 24, lastModified: 0 })).toThrow();
+  });
+
+  it("limits browser and signed previews to supported raster formats", () => {
+    for (const extension of ["png", "jpg", "jpeg", "webp"] as const) expect(isPreviewableArtwork(extension)).toBe(true);
+    for (const extension of ["pdf", "ai", "psd"] as const) expect(isPreviewableArtwork(extension)).toBe(false);
   });
 });
 

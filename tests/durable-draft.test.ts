@@ -49,7 +49,7 @@ describe("draft request and lifecycle validation", () => {
   it("validates UUIDs, route consistency, and incomplete working state", () => {
     expect(uuidSchema.safeParse("71e9305b-56f3-4df3-85c0-bbf8ca6e2c25").success).toBe(true);
     expect(uuidSchema.safeParse("not-an-owner").success).toBe(false);
-    expect(draftSnapshotRequestSchema.safeParse({ ...base, workingConfiguration: { route: "gang-sheet", sheetCount: "", finishedWidth: "22", finishedLength: "36", notes: "editing" } }).success).toBe(true);
+    expect(draftSnapshotRequestSchema.safeParse({ ...base, workingConfiguration: { route: "gang-sheet", sheets: [{ artworkId: "00000000-0000-4000-8000-000000000001", copies: "", finishedWidth: "22", finishedLength: "36" }], notes: "editing" } }).success).toBe(true);
     expect(draftSnapshotRequestSchema.safeParse({ ...base, workingConfiguration: { route: "individual-designs", designs: [], notes: "" } }).success).toBe(false);
     expect(bootstrapDraftRequestSchema.safeParse({ selectedRoute: "gang-sheet" }).success).toBe(true);
     expect(bootstrapDraftRequestSchema.safeParse({ selectedRoute: "gang-sheet", expectedVersion: 3 }).success).toBe(true);
@@ -58,7 +58,7 @@ describe("draft request and lifecycle validation", () => {
   it("rejects invalid lifecycle combinations and accepts completed configuration", () => {
     expect(draftSnapshotRequestSchema.safeParse({ ...base, selectedRoute: null, startingPointConfirmed: true }).success).toBe(false);
     expect(draftSnapshotRequestSchema.safeParse({ ...base, artworkAcknowledged: true, startingPointConfirmed: false }).success).toBe(false);
-    const configuration = { route: "gang-sheet" as const, sheetCount: 1, finishedWidth: 22, finishedLength: 36, notes: "" };
+    const configuration = { route: "gang-sheet" as const, sheets: [{ artworkId: "00000000-0000-4000-8000-000000000001", copies: 1, finishedWidth: 22, finishedLength: 36 }], notes: "" };
     expect(draftSnapshotRequestSchema.safeParse({ ...base, artworkAcknowledged: true, configuration }).success).toBe(true);
     expect(deriveCompletedStep({ ...base, artworkAcknowledged: true, configuration })).toBe(3);
     expect(deriveCompletedStep({ ...base, artworkAcknowledged: true, configuration: null })).toBe(2);

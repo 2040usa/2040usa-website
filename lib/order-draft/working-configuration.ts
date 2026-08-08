@@ -5,7 +5,7 @@ export function toWorkingConfiguration(configuration: IndividualDesignsConfigura
 export function toWorkingConfiguration(configuration: OrderConfiguration): WorkingOrderConfiguration;
 export function toWorkingConfiguration(configuration: OrderConfiguration): WorkingOrderConfiguration {
   if (configuration.route === "gang-sheet") {
-    return { ...configuration, sheetCount: String(configuration.sheetCount), finishedWidth: String(configuration.finishedWidth), finishedLength: String(configuration.finishedLength) };
+    return { ...configuration, sheets: configuration.sheets.map((sheet) => ({ ...sheet, copies: String(sheet.copies), finishedWidth: String(sheet.finishedWidth), finishedLength: String(sheet.finishedLength) })) };
   }
   return {
     ...configuration,

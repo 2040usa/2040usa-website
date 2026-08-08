@@ -1,7 +1,7 @@
 import { type Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
-const png = (name: string) => ({ name, mimeType: "image/png", buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) });
+const png = (name: string) => ({ name, mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64") });
 
 async function resetDraft(page: Page) {
   await page.goto("/order/start");
@@ -29,8 +29,9 @@ async function chooseRoute(page: Page, name: "Print-Ready Gang Sheet" | "Individ
 
 async function uploadArtwork(page: Page, ...files: ReturnType<typeof png>[]) {
   await page.getByLabel("Choose artwork files").setInputFiles(files);
-  await page.getByRole("button", { name: "Upload selected files" }).click();
+  await expect(page.getByRole("button", { name: "Upload selected files" })).toHaveCount(0);
   await expect(page.getByText("Artwork ready for this draft")).toBeVisible({ timeout: 45_000 });
+  for (const file of files) await expect(page.getByAltText(`Private preview of ${file.name}; not a print approval`)).toBeVisible({ timeout: 15_000 });
 }
 
 async function continueToConfiguration(page: Page) {
@@ -113,6 +114,34 @@ test("populated route changes require confirmation and clean only after acceptan
   await expect(page.getByText("keep-until-confirmed.png", { exact: true })).toHaveCount(0);
 });
 
+test("selection previews locally, auto-starts, and keeps reservation failure retryable", async ({ page, runtimeMonitor }) => {
+  await chooseRoute(page, "Individual Designs");
+  await page.evaluate(() => {
+    const trackedWindow = window as typeof window & { __revokedArtworkPreviewUrls?: string[] };
+    trackedWindow.__revokedArtworkPreviewUrls = [];
+    const revoke = URL.revokeObjectURL.bind(URL);
+    URL.revokeObjectURL = (url) => { trackedWindow.__revokedArtworkPreviewUrls?.push(url); revoke(url); };
+  });
+  const current = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json())) as { draft: { id: string } };
+  let failedReservation = false;
+  await page.route("**/api/order-drafts/*/artwork", async (route) => {
+    if (route.request().method() !== "POST" || failedReservation) return route.continue();
+    failedReservation = true;
+    return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "SERVER_ERROR", message: "Temporary reservation failure." } }) });
+  });
+  await runtimeMonitor.expectHttpFailure({ method: "POST", path: `/api/order-drafts/${current.draft.id}/artwork`, status: 503 }, async () => {
+    await page.getByLabel("Choose artwork files").setInputFiles(png("automatic-preview.png"));
+  });
+  await expect(page.getByAltText("Local preview of automatic-preview.png; not a print approval")).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Temporary reservation failure" })).toBeVisible();
+  await page.unroute("**/api/order-drafts/*/artwork");
+  await page.getByRole("button", { name: "Retry reservation for automatic-preview.png" }).click();
+  await expect(page.getByText("Artwork ready for this draft")).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByAltText("Private preview of automatic-preview.png; not a print approval")).toBeVisible({ timeout: 15_000 });
+  await continueToConfiguration(page);
+  expect(await page.evaluate(() => (window as typeof window & { __revokedArtworkPreviewUrls?: string[] }).__revokedArtworkPreviewUrls?.length ?? 0)).toBeGreaterThan(0);
+});
+
 test("Individual Designs links every upload to multiple size variants and requested changes", async ({ page }) => {
   await chooseRoute(page, "Individual Designs");
   await uploadArtwork(page, png("front-logo.png"), png("sleeve-mark.png"));
@@ -182,7 +211,6 @@ test("replacement uses a new canonical record and preserves design details", asy
   await page.goto("/order/artwork");
   await page.getByRole("button", { name: "Replace old-design.png" }).click();
   await page.getByLabel("Choose artwork files").setInputFiles(png("new-design.png"));
-  await page.getByRole("button", { name: "Upload selected files" }).click();
   await expect(page.getByText("new-design.png", { exact: true })).toBeVisible({ timeout: 45_000 });
   await expect(page.getByText("old-design.png", { exact: true })).toHaveCount(0);
   await page.goto("/order/configure");
@@ -192,16 +220,24 @@ test("replacement uses a new canonical record and preserves design details", asy
   await expect(page.getByLabel("Requested changes")).toHaveValue("Adjust the blue text.");
 });
 
-test("Print-Ready Gang Sheet configuration remains a draft-only path", async ({ page }) => {
+test("Print-Ready Gang Sheet configures and reviews every uploaded file", async ({ page }) => {
   await chooseRoute(page, "Print-Ready Gang Sheet");
-  await uploadArtwork(page, png("arranged-sheet.png"));
+  await uploadArtwork(page, png("arranged-sheet.png"), png("second-sheet.png"));
   await continueToConfiguration(page);
-  await page.getByLabel("Number of sheets").fill("3");
-  await page.getByLabel(/finished width/i).fill("22");
-  await page.getByLabel(/finished length/i).fill("48");
+  await expect(page.getByRole("group", { name: "arranged-sheet.png" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "second-sheet.png" })).toBeVisible();
+  await page.getByLabel("Copies").nth(0).fill("3");
+  await page.getByLabel(/finished width/i).nth(0).fill("22");
+  await page.getByLabel(/finished length/i).nth(0).fill("48");
+  await page.getByLabel("Copies").nth(1).fill("2");
+  await page.getByLabel(/finished width/i).nth(1).fill("24");
+  await page.getByLabel(/finished length/i).nth(1).fill("60");
   await page.getByRole("button", { name: "Review draft" }).click();
+  await expect(page.getByRole("heading", { name: "arranged-sheet.png" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "second-sheet.png" })).toBeVisible();
   await expect(page.getByText("3", { exact: true })).toBeVisible();
-  await expect(page.getByText("22 in", { exact: true })).toBeVisible();
+  await expect(page.getByText("22 in × 48 in", { exact: true })).toBeVisible();
+  await expect(page.getByText("24 in × 60 in", { exact: true })).toBeVisible();
   await expect(page.getByText(/does not calculate a price, accept payment, or submit an order/i)).toBeVisible();
 });
 

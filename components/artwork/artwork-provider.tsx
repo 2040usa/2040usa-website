@@ -124,7 +124,13 @@ export function ArtworkProvider({ children }: { children: ReactNode }) {
         setRecoveryTarget(null);
         if (!reservation.upload) await refresh();
         setState("ready"); setError(null); return reservation;
-      } catch (cause) { if (sequence === latestIssuedRef.current) { setState("error"); setError(cause instanceof Error ? cause.message : "Artwork could not be reserved."); } throw cause; }
+      } catch (cause) {
+        // Reservation failures belong to one selected file. The uploader retains
+        // that file and renders its retry control; duplicating the same failure as
+        // provider- and step-level alerts obscures which file needs attention.
+        if (sequence === latestIssuedRef.current) { setState("ready"); setError(null); }
+        throw cause;
+      }
     },
     complete: async (artworkId) => {
       if (!draftId) throw new Error("Draft unavailable.");
