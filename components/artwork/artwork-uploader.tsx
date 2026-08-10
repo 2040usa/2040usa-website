@@ -79,7 +79,7 @@ function createArtworkUppy(draftId: string, reportStage: (stage: string) => void
   });
 }
 
-export function ArtworkUploader({ draftId }: { draftId: string }) {
+export function ArtworkUploader({ draftId, onActivityChange }: { draftId: string; onActivityChange?: (active: boolean) => void }) {
   const [uploadStage, setUploadStage] = useState("Idle");
   const [uppy] = useState(() => createArtworkUppy(draftId, setUploadStage));
   const destroyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,10 +87,10 @@ export function ArtworkUploader({ draftId }: { draftId: string }) {
     if (destroyTimer.current) clearTimeout(destroyTimer.current);
     return () => { destroyTimer.current = setTimeout(() => uppy.destroy(), 0); };
   }, [uppy]);
-  return <UppyContextProvider uppy={uppy}><ArtworkUploaderContents uppy={uppy} draftId={draftId} uploadStage={uploadStage} setUploadStage={setUploadStage} /></UppyContextProvider>;
+  return <UppyContextProvider uppy={uppy}><ArtworkUploaderContents uppy={uppy} draftId={draftId} uploadStage={uploadStage} setUploadStage={setUploadStage} onActivityChange={onActivityChange} /></UppyContextProvider>;
 }
 
-function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage }: { uppy: Uppy; draftId: string; uploadStage: string; setUploadStage: (stage: string) => void }) {
+function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage, onActivityChange }: { uppy: Uppy; draftId: string; uploadStage: string; setUploadStage: (stage: string) => void; onActivityChange?: (active: boolean) => void }) {
   const route = useOrderDraft((state) => state.selectedRoute);
   const { records, readiness, error, recoveryTarget, selectRecoveryTarget, reserve, complete, fail, remove } = useArtwork();
   const files = useUppyState(uppy, (uppyState) => Object.values(uppyState.files));
@@ -104,6 +104,10 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage }:
   const replacementTarget = recoveryTarget?.status === "uploaded" ? recoveryTarget : null;
   const input = useFileInput(useMemo(() => ({ accept: ARTWORK_ACCEPT, multiple: !replacementTarget }), [replacementTarget]));
   const dropzone = useDropzone(useMemo(() => ({ noClick: false, multiple: !replacementTarget }), [replacementTarget]));
+
+  const hasUploadActivity = files.some((file) => !file.progress.uploadComplete);
+  useEffect(() => { onActivityChange?.(hasUploadActivity); }, [hasUploadActivity, onActivityChange]);
+  useEffect(() => () => onActivityChange?.(false), [onActivityChange]);
 
   useEffect(() => {
     const onAdded = (file: (typeof files)[number]) => {
@@ -120,7 +124,11 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage }:
     const onSuccess = (file: (typeof files)[number] | undefined) => {
       if (!file) return;
       const artworkId = metaFor(file).artworkId;
-      if (typeof artworkId === "string") void complete(artworkId).then(() => { setAnnouncement(`${file.name} upload completed.`); setUploadStage("Verified and ready"); }).catch(() => undefined);
+      if (typeof artworkId === "string") void complete(artworkId).then(() => {
+        if (uppy.getFile(file.id)) uppy.removeFile(file.id);
+        setAnnouncement(`${file.name} upload completed.`);
+        setUploadStage("Verified and ready");
+      }).catch(() => undefined);
     };
     const onError = (file: (typeof files)[number] | undefined) => {
       if (!file) return;

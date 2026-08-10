@@ -113,15 +113,16 @@ for (const viewport of viewports) {
     });
   });
 
-  test(`${viewport.name} Individual Designs configuration stacks without overflow`, async ({ page }) => {
+  test(`${viewport.name} Artwork & Layout workspace stacks without overflow`, async ({ page }) => {
     await mockIndividualDraft(page, false);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
-    await page.goto("/order/configure");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Configure each artwork file.");
+    await page.goto("/order/artwork");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Upload and configure your artwork.");
     await expect(page.getByRole("group", { name: /a-very-long-individual-design-filename/ })).toBeVisible();
+    await expect(page.getByTestId("layout-preview")).toContainText("No optimized gang sheet has been generated.");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     await expect(page.locator("h1")).toHaveCount(1);
-    await page.screenshot({ fullPage: true, path: `artifacts/visual-review/individual-configure-${viewport.name}.png` });
+    await page.screenshot({ fullPage: true, path: `artifacts/visual-review/artwork-layout-${viewport.name}.png` });
   });
 }
 

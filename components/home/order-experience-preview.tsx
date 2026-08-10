@@ -2,14 +2,14 @@ import { Check, FileImage, Ruler } from "lucide-react";
 import { SectionLabel } from "@/components/ui/section-label";
 import { StatusBadge } from "@/components/ui/status-badge";
 
-const orderSteps = ["Choose route", "Add artwork", "Set sizes and quantities", "Review draft"];
+const orderSteps = ["Choose route", "Artwork & Layout", "Review draft"];
 
 export function OrderExperiencePreview() {
   return (
     <section id="experience" className="min-w-0 rounded-control border border-border bg-panel shadow-[var(--card-shadow)]" aria-labelledby="experience-heading">
       <div className="border-b border-border p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4"><div><SectionLabel>Draft experience</SectionLabel><h2 id="experience-heading" className="mt-4 font-display text-3xl font-semibold text-text-primary sm:text-4xl">A clear route from artwork to saved details.</h2></div><StatusBadge tone="accent">Example</StatusBadge></div>
-        <p className="mt-4 max-w-2xl text-sm leading-6 text-text-muted">This static example shows the current draft steps. Use Start a Print for the working artwork upload experience.</p>
+        <p className="mt-4 max-w-2xl text-sm leading-6 text-text-muted">This static example shows the three-step draft journey. Use Start a Print for the working Artwork &amp; Layout experience.</p>
       </div>
       <div className="grid md:grid-cols-[0.72fr_1.28fr]">
         <aside className="border-b border-border p-4 md:border-b-0 md:border-r" aria-label="Example order steps">

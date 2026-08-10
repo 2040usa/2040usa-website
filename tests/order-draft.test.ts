@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_DYNAMIC_ROWS, ORDER_ROUTE_VALUES } from "../lib/order-draft/constants";
+import { MAX_DYNAMIC_ROWS, ORDER_ROUTE_VALUES, ORDER_STEPS } from "../lib/order-draft/constants";
 import { getEarliestIncompleteStep, getGuardRedirect, parseOrderRouteQuery } from "../lib/order-draft/navigation";
 import { gangSheetConfigurationSchema, gangSheetFormSchema, individualDesignsConfigurationSchema, individualDesignsFormSchema, orderConfigurationSchema } from "../lib/order-draft/schemas";
 import { createOrderDraftStore } from "../lib/order-draft/store";
@@ -93,6 +93,14 @@ describe("artwork-linked synchronization", () => {
 });
 
 describe("draft navigation and state", () => {
+  it("exposes exactly three customer-visible steps with configuration combined into Artwork & Layout", () => {
+    expect(ORDER_STEPS).toEqual([
+      { id: "start", number: 1, title: "Starting Point", path: "/order/start" },
+      { id: "artwork", number: 2, title: "Artwork & Layout", path: "/order/artwork" },
+      { id: "review", number: 3, title: "Review", path: "/order/review" },
+    ]);
+  });
+
   it("guards forward access and clears incompatible route state", () => {
     const empty = { selectedRoute: null, startingPointConfirmed: false, artworkAcknowledged: false, configuration: null, lastCompletedStep: 0 as const };
     expect(getEarliestIncompleteStep(empty)).toBe("start");
@@ -114,7 +122,7 @@ describe("draft navigation and state", () => {
     store.getState().acknowledgeArtwork();
     store.getState().saveWorkingConfiguration(working);
     expect(store.getState().configuration).toBeNull();
-    expect(getGuardRedirect("review", store.getState())).toBe("/order/configure");
+    expect(getGuardRedirect("review", store.getState())).toBe("/order/artwork");
     store.getState().saveConfiguration(individual);
     expect(getGuardRedirect("review", store.getState())).toBeNull();
   });

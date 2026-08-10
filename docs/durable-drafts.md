@@ -8,7 +8,9 @@ Route confirmation uses the same serialized mutation coordinator as autosave, ex
 
 The server derives ownership from verified claims and completion from canonical fields. `updateManyAndReturn` checks owner, ID, active status, and version and returns the row produced by that statement. Success increments once. A stale request returns `VERSION_CONFLICT`/409 without overwrite.
 
-Working configuration mirrors controls and may be temporarily invalid. Completed configuration passes the strict route-specific Zod schema and alone permits Review. For both routes, the server additionally requires every artwork UUID to be owner-scoped, attached to the active draft, uploaded, non-deleting, route/purpose compatible, unique, and an exact match for the current required artwork set.
+Working configuration mirrors controls on the combined Artwork & Layout route and may be temporarily invalid before artwork acknowledgment. Completed configuration passes the strict route-specific Zod schema and alone permits Review. The visible three-step journey retains `artwork_acknowledged` as an internal durable boundary: Continue to Review flushes working values, establishes acknowledgment from canonical readiness when needed, saves strict completion, flushes again, and navigates only after success. For both routes, the server additionally requires every artwork UUID to be owner-scoped, attached to the active draft, uploaded, non-deleting, route/purpose compatible, unique, and an exact match for the current required artwork set.
+
+The former `/order/configure` URL performs a compatibility redirect to `/order/artwork`; it does not mount a second form or persistence path. No schema change is needed for the visible step consolidation.
 
 Hydration distinguishes a durable draft, a genuine empty result, Auth verification failure, backend failure, and malformed response. Unknown state keeps guarded content closed and exposes Retry; it is never converted into an empty draft.
 

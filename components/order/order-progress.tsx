@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 export function OrderProgress({ currentStep, lastCompletedStep }: { currentStep: OrderStepId; lastCompletedStep: CompletedStep }) {
   return (
     <nav aria-label="Order draft progress" className="border-b border-border bg-panel">
-      <ol className="page-shell grid grid-cols-4">
+      <ol className="page-shell grid grid-cols-3">
         {ORDER_STEPS.map((step) => {
           const isCurrent = step.id === currentStep;
           const isCompleted = step.number <= lastCompletedStep && !isCurrent;

@@ -28,10 +28,9 @@ export const ORDER_ROUTE_OPTIONS = [
 ] as const satisfies readonly { value: OrderRoute; name: string; description: string; customerHas: string; studioHandles: string; shortLabel: string }[];
 
 export const ORDER_STEPS = [
-  { id: "start", number: 1, title: "Starting point", path: "/order/start" },
-  { id: "artwork", number: 2, title: "Artwork", path: "/order/artwork" },
-  { id: "configure", number: 3, title: "Project details", path: "/order/configure" },
-  { id: "review", number: 4, title: "Review", path: "/order/review" },
+  { id: "start", number: 1, title: "Starting Point", path: "/order/start" },
+  { id: "artwork", number: 2, title: "Artwork & Layout", path: "/order/artwork" },
+  { id: "review", number: 3, title: "Review", path: "/order/review" },
 ] as const satisfies readonly { id: OrderStepId; number: number; title: string; path: `/order/${OrderStepId}` }[];
 
 export const ARTWORK_GUIDANCE: Record<OrderRoute, { title: string; detail: string; checklist: readonly string[] }> = {
@@ -43,7 +42,7 @@ export const ARTWORK_GUIDANCE: Record<OrderRoute, { title: string; detail: strin
   "individual-designs": {
     title: "Upload each individual design",
     detail: "Add every separate artwork file, then specify one or more sizes and quantities for each design.",
-    checklist: ["A separate file for each design", "Transparent backgrounds where appropriate", "Sizes and quantities are entered in Project Details"],
+    checklist: ["A separate file for each design", "Transparent backgrounds where appropriate", "Sizes and quantities are configured with each upload below"],
   },
 };
 

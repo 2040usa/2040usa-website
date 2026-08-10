@@ -31,12 +31,16 @@ async function uploadArtwork(page: Page, ...files: ReturnType<typeof png>[]) {
   await page.getByLabel("Choose artwork files").setInputFiles(files);
   await expect(page.getByRole("button", { name: "Upload selected files" })).toHaveCount(0);
   await expect(page.getByText("Artwork ready for this draft")).toBeVisible({ timeout: 45_000 });
-  for (const file of files) await expect(page.getByAltText(`Private preview of ${file.name}; not a print approval`)).toBeVisible({ timeout: 15_000 });
+  for (const file of files) {
+    await expect(page.getByRole("group", { name: file.name })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByAltText(`Private preview of ${file.name}; not a print approval`).first()).toBeVisible({ timeout: 15_000 });
+  }
 }
 
-async function continueToConfiguration(page: Page) {
-  await page.getByRole("button", { name: "Continue to project details" }).click();
-  await expect(page).toHaveURL(/\/order\/configure$/);
+async function expectCombinedWorkspace(page: Page) {
+  await expect(page).toHaveURL(/\/order\/artwork$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Upload and configure your artwork.");
+  await expect(page.getByTestId("layout-preview")).toBeVisible();
 }
 
 async function configureFirstDesign(page: Page, options: { method?: "width" | "height" | "original"; dimension?: string; quantity?: string; changes?: string } = {}) {
@@ -62,6 +66,10 @@ test("homepage and Starting Point expose exactly two active routes", async ({ pa
   await expect(page).toHaveURL(/\/order\/start\?route=individual-designs$/);
   await expect(page.getByRole("button", { name: /Individual Designs/i })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: /Confirm starting point|Continue/i })).toHaveCount(0);
+  const progress = page.getByRole("navigation", { name: "Order draft progress" });
+  await expect(progress.getByRole("listitem")).toHaveCount(3);
+  await expect(progress.getByText("Artwork & Layout", { exact: true })).toBeVisible();
+  await expect(progress.getByText("Project details", { exact: true })).toHaveCount(0);
   const current = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json())) as { draft: null | { selectedRoute: string | null; startingPointConfirmed: boolean } };
   expect(current.draft === null || (current.draft.selectedRoute === null && current.draft.startingPointConfirmed === false)).toBe(true);
   await page.goto("/order/artwork");
@@ -70,15 +78,27 @@ test("homepage and Starting Point expose exactly two active routes", async ({ pa
 
 test("route-card activation durably establishes each route before navigation", async ({ page }) => {
   await chooseRoute(page, "Print-Ready Gang Sheet");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("arranged gang sheet");
+  await expect(page.getByText("Upload your arranged gang sheet", { exact: true })).toBeVisible();
   let current = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json())) as { draft: { selectedRoute: string; startingPointConfirmed: boolean } };
   expect(current.draft).toMatchObject({ selectedRoute: "gang-sheet", startingPointConfirmed: true });
 
   await resetDraft(page);
   await chooseRoute(page, "Individual Designs");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("individual design");
+  await expect(page.getByText("Upload each individual design", { exact: true })).toBeVisible();
   current = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()));
   expect(current.draft).toMatchObject({ selectedRoute: "individual-designs", startingPointConfirmed: true });
+});
+
+test("legacy Project Details URL redirects to the canonical Artwork & Layout workspace", async ({ page }) => {
+  await chooseRoute(page, "Individual Designs");
+  await page.getByRole("button", { name: "Choose files" }).focus();
+  await expect(page.getByRole("button", { name: "Choose files" })).toBeFocused();
+  await page.getByRole("button", { name: "Drop files here or press Enter" }).focus();
+  await expect(page.getByRole("button", { name: "Drop files here or press Enter" })).toBeFocused();
+  await page.goto("/order/configure");
+  await expect(page).toHaveURL(/\/order\/artwork$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Upload and configure your artwork.");
+  await expect(page.getByText("Project details", { exact: true })).toHaveCount(1);
 });
 
 test("a failed route establishment stays retryable on Starting Point", async ({ page, runtimeMonitor }) => {
@@ -134,18 +154,19 @@ test("selection previews locally, auto-starts, and keeps reservation failure ret
   });
   await expect(page.getByAltText("Local preview of automatic-preview.png; not a print approval")).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "Temporary reservation failure" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue to Review" })).toBeDisabled();
   await page.unroute("**/api/order-drafts/*/artwork");
   await page.getByRole("button", { name: "Retry reservation for automatic-preview.png" }).click();
   await expect(page.getByText("Artwork ready for this draft")).toBeVisible({ timeout: 45_000 });
-  await expect(page.getByAltText("Private preview of automatic-preview.png; not a print approval")).toBeVisible({ timeout: 15_000 });
-  await continueToConfiguration(page);
+  await expect(page.getByAltText("Private preview of automatic-preview.png; not a print approval").first()).toBeVisible({ timeout: 15_000 });
+  await expectCombinedWorkspace(page);
   expect(await page.evaluate(() => (window as typeof window & { __revokedArtworkPreviewUrls?: string[] }).__revokedArtworkPreviewUrls?.length ?? 0)).toBeGreaterThan(0);
 });
 
 test("Individual Designs links every upload to multiple size variants and requested changes", async ({ page }) => {
   await chooseRoute(page, "Individual Designs");
   await uploadArtwork(page, png("front-logo.png"), png("sleeve-mark.png"));
-  await continueToConfiguration(page);
+  await expectCombinedWorkspace(page);
   await expect(page.getByRole("group", { name: "front-logo.png" })).toBeVisible();
   await expect(page.getByRole("group", { name: "sleeve-mark.png" })).toBeVisible();
 
@@ -158,7 +179,11 @@ test("Individual Designs links every upload to multiple size variants and reques
   await page.getByLabel("Quantity").nth(2).fill("3");
   await page.getByLabel("No, print it as uploaded").nth(1).check();
 
-  await page.getByRole("button", { name: "Review draft" }).click();
+  await expect(page.getByTestId("layout-preview")).toContainText("No optimized gang sheet has been generated.");
+  await expect(page.getByTestId("layout-preview")).not.toContainText(/utilization|price|\d+(?:\.\d+)?\s*(?:in|inch|inches)\s+of sheet/i);
+  await expect(page.getByTestId("layout-preview")).toContainText("33");
+
+  await page.getByRole("button", { name: "Continue to Review" }).click();
   await expect(page).toHaveURL(/\/order\/review$/);
   await expect(page.getByRole("heading", { name: "front-logo.png" })).toBeVisible();
   await expect(page.getByText("Set by width: 11.5 in · quantity 24")).toBeVisible();
@@ -167,19 +192,26 @@ test("Individual Designs links every upload to multiple size variants and reques
   await expect(page.getByText("Remove the background and crop close.")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "front-logo.png" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit Artwork & Layout" })).toHaveAttribute("href", "/order/artwork");
+  await expect(page.getByRole("link", { name: "Edit artwork", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Edit project details", exact: true })).toHaveCount(0);
   await expect(page.getByText(/price, payment, or production request/i)).toBeVisible();
+  await page.getByRole("link", { name: "Edit Artwork & Layout" }).click();
+  await expect(page).toHaveURL(/\/order\/artwork$/);
+  await expect(page.getByRole("group", { name: "front-logo.png" })).toBeVisible();
 });
 
 test("configuration validation protects sizing exclusivity and change instructions", async ({ page }) => {
   await chooseRoute(page, "Individual Designs");
   await uploadArtwork(page, png("validation.png"));
-  await continueToConfiguration(page);
-  await page.getByRole("button", { name: "Review draft" }).click();
+  await expectCombinedWorkspace(page);
+  await page.getByRole("button", { name: "Continue to Review" }).click();
+  await expect(page.getByLabel("Sizing method")).toBeFocused();
   await expect(page.locator('[id="designs.0.sizes.0-method-error"]')).toHaveText("Choose one sizing method.");
   await page.getByLabel("Sizing method").selectOption("original");
   await page.getByLabel("Quantity").fill("0");
   await page.getByLabel("Yes, I need changes").check();
-  await page.getByRole("button", { name: "Review draft" }).click();
+  await page.getByRole("button", { name: "Continue to Review" }).click();
   await expect(page.locator('[id="designs.0.sizes.0-quantity-error"]')).toContainText("whole-number quantity");
   await expect(page.locator('[id="design-0-instructions-error"]')).toHaveText("Describe the changes you want us to review.");
 });
@@ -187,16 +219,16 @@ test("configuration validation protects sizing exclusivity and change instructio
 test("deletion prunes its artwork-linked working configuration", async ({ page }) => {
   await chooseRoute(page, "Individual Designs");
   await uploadArtwork(page, png("delete-me.png"), png("keep-me.png"));
-  await continueToConfiguration(page);
+  await expectCombinedWorkspace(page);
   await configureFirstDesign(page);
   await page.getByLabel("Sizing method").nth(1).selectOption("height");
   await page.getByLabel(/Finished height/).fill("5");
   await page.getByLabel("Quantity").nth(1).fill("7");
   await page.getByLabel("No, print it as uploaded").nth(1).check();
-  await page.goto("/order/artwork");
   await page.getByRole("button", { name: "Remove delete-me.png" }).click();
   await expect(page.getByText("delete-me.png", { exact: true })).toHaveCount(0);
   await page.goto("/order/configure");
+  await expect(page).toHaveURL(/\/order\/artwork$/);
   await expect(page.getByRole("group", { name: "keep-me.png" })).toBeVisible();
   await expect(page.getByRole("group", { name: "delete-me.png" })).toHaveCount(0);
 });
@@ -204,16 +236,25 @@ test("deletion prunes its artwork-linked working configuration", async ({ page }
 test("replacement uses a new canonical record and preserves design details", async ({ page }) => {
   await chooseRoute(page, "Individual Designs");
   await uploadArtwork(page, png("old-design.png"));
-  await continueToConfiguration(page);
+  await expectCombinedWorkspace(page);
   await configureFirstDesign(page, { method: "height", dimension: "9", quantity: "12", changes: "Adjust the blue text." });
-  await page.getByRole("button", { name: "Review draft" }).click();
+  await page.getByRole("button", { name: "Continue to Review" }).click();
   await expect(page).toHaveURL(/\/order\/review$/);
+  await expect(page.getByText("Set by height: 9 in · quantity 12")).toBeVisible();
+  await expect(page.getByText("Adjust the blue text.")).toBeVisible();
+  const completedDraft = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json())) as { draft: { workingConfiguration: { designs: Array<{ sizes: Array<{ method: string; dimension: string; quantity: string }>; changeInstructions: string }> } } };
+  expect(completedDraft.draft.workingConfiguration.designs[0]).toMatchObject({ sizes: [{ method: "height", dimension: "9", quantity: "12" }], changeInstructions: "Adjust the blue text." });
   await page.goto("/order/artwork");
+  await expect(page.getByLabel(/Finished height/)).toHaveValue("9");
+  await expect(page.getByLabel("Quantity")).toHaveValue("12");
+  await expect(page.getByLabel("Requested changes")).toHaveValue("Adjust the blue text.");
   await page.getByRole("button", { name: "Replace old-design.png" }).click();
   await page.getByLabel("Choose artwork files").setInputFiles(png("new-design.png"));
   await expect(page.getByText("new-design.png", { exact: true })).toBeVisible({ timeout: 45_000 });
   await expect(page.getByText("old-design.png", { exact: true })).toHaveCount(0);
-  await page.goto("/order/configure");
+  const reboundDraft = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json())) as { draft: { workingConfiguration: { designs: Array<{ sizes: Array<{ method: string; dimension: string; quantity: string }>; changeInstructions: string }> } } };
+  expect(reboundDraft.draft.workingConfiguration.designs[0]).toMatchObject({ sizes: [{ method: "height", dimension: "9", quantity: "12" }], changeInstructions: "Adjust the blue text." });
+  await expectCombinedWorkspace(page);
   await expect(page.getByRole("group", { name: "new-design.png" })).toBeVisible();
   await expect(page.getByLabel(/Finished height/)).toHaveValue("9");
   await expect(page.getByLabel("Quantity")).toHaveValue("12");
@@ -223,7 +264,7 @@ test("replacement uses a new canonical record and preserves design details", asy
 test("Print-Ready Gang Sheet configures and reviews every uploaded file", async ({ page }) => {
   await chooseRoute(page, "Print-Ready Gang Sheet");
   await uploadArtwork(page, png("arranged-sheet.png"), png("second-sheet.png"));
-  await continueToConfiguration(page);
+  await expectCombinedWorkspace(page);
   await expect(page.getByRole("group", { name: "arranged-sheet.png" })).toBeVisible();
   await expect(page.getByRole("group", { name: "second-sheet.png" })).toBeVisible();
   await page.getByLabel("Copies").nth(0).fill("3");
@@ -232,7 +273,12 @@ test("Print-Ready Gang Sheet configures and reviews every uploaded file", async 
   await page.getByLabel("Copies").nth(1).fill("2");
   await page.getByLabel(/finished width/i).nth(1).fill("24");
   await page.getByLabel(/finished length/i).nth(1).fill("60");
-  await page.getByRole("button", { name: "Review draft" }).click();
+  await expect(page.getByTestId(/gang-sheet-preview-/)).toHaveCount(2);
+  await expect(page.getByTestId(/gang-sheet-preview-/).nth(0).getByAltText("Private preview of arranged-sheet.png; not a print approval")).toBeVisible();
+  await expect(page.getByTestId(/gang-sheet-preview-/).nth(1).getByAltText("Private preview of second-sheet.png; not a print approval")).toBeVisible();
+  await expect(page.getByTestId(/gang-sheet-preview-/).nth(0)).toContainText("22 in × 48 in");
+  await expect(page.getByTestId(/gang-sheet-preview-/).nth(1)).toContainText("24 in × 60 in");
+  await page.getByRole("button", { name: "Continue to Review" }).click();
   await expect(page.getByRole("heading", { name: "arranged-sheet.png" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "second-sheet.png" })).toBeVisible();
   await expect(page.getByText("3", { exact: true })).toBeVisible();
@@ -246,7 +292,7 @@ for (const width of [360, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await chooseRoute(page, "Individual Designs");
     await uploadArtwork(page, png("a-very-long-individual-design-filename-that-must-wrap-without-breaking-the-layout.png"));
-    await continueToConfiguration(page);
+    await expectCombinedWorkspace(page);
     await page.getByRole("button", { name: "Add another size" }).click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     await expect(page.locator("h1")).toHaveCount(1);

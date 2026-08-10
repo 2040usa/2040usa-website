@@ -1,5 +1,5 @@
-import { ConfigureStep } from "@/components/order/steps/configure-step";
+import { redirect } from "next/navigation";
 
 export default function OrderConfigurePage() {
-  return <ConfigureStep />;
+  redirect("/order/artwork");
 }

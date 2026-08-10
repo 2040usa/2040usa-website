@@ -18,6 +18,8 @@ import { FieldErrorMessage, FormErrorSummary, inputClassName, labelClassName } f
 import { useWorkingConfiguration } from "@/components/order/forms/use-working-configuration";
 import { StepActions } from "@/components/order/step-actions";
 import { ArtworkIdentity } from "@/components/artwork/artwork-preview";
+import { ArtworkRecordActions } from "@/components/artwork/artwork-file-list";
+import { IndividualDesignsLayoutPreview } from "@/components/order/layout-preview";
 
 type IndividualDesignsControl = Control<WorkingIndividualDesignsConfiguration, unknown, IndividualDesignsFormValues>;
 
@@ -73,12 +75,17 @@ function SizeVariants({ designIndex, control, register, setValue, errors }: {
   </div>;
 }
 
-export function IndividualDesignsForm() {
+export function IndividualDesignsForm({ continueBlocked, blockedReason }: { continueBlocked: boolean; blockedReason: string }) {
   const router = useRouter();
-  const { records } = useArtwork();
-  const artwork = useMemo(() => records.filter((record) => record.status === "uploaded" && record.route === "individual-designs" && record.purpose === "individual-design"), [records]);
+  const { records, acknowledge } = useArtwork();
+  const artwork = useMemo(() => {
+    const uploaded = records.filter((record) => record.status === "uploaded" && record.route === "individual-designs" && record.purpose === "individual-design");
+    const supersededIds = new Set(uploaded.flatMap((record) => record.replacementForId ? [record.replacementForId] : []));
+    return uploaded.filter((record) => !supersededIds.has(record.id));
+  }, [records]);
   const working = useOrderDraft((state) => state.workingConfiguration?.route === "individual-designs" ? state.workingConfiguration : null);
   const completed = useOrderDraft((state) => state.configuration?.route === "individual-designs" ? state.configuration : null);
+  const artworkAcknowledged = useOrderDraft((state) => state.artworkAcknowledged);
   const saveConfiguration = useOrderDraft((state) => state.saveConfiguration);
   const { flush } = useOrderDraftPersistence();
   const initial = working ?? (completed ? toWorkingConfiguration(completed) : { route: "individual-designs" as const, designs: artwork.map((record) => newDesign(record.id)), notes: "" });
@@ -91,21 +98,38 @@ export function IndividualDesignsForm() {
   useEffect(() => {
     const current = getValues();
     const byId = new Map((current.designs ?? []).map((design) => [design.artworkId, design]));
-    const next = artwork.map((record) => byId.get(record.id) ?? newDesign(record.id));
+    const next = artwork.map((record) => {
+      const existing = byId.get(record.id);
+      if (existing) return existing;
+      const replaced = record.replacementForId ? byId.get(record.replacementForId) : null;
+      return replaced ? { ...replaced, artworkId: record.id } : newDesign(record.id);
+    });
     if (next.length !== current.designs?.length || next.some((design, index) => design.artworkId !== current.designs?.[index]?.artworkId)) {
       reset({ route: "individual-designs", designs: next, notes: current.notes ?? "" }, { keepDirtyValues: true });
     }
   }, [artwork, getValues, reset]);
 
-  const onSubmit = async (values: IndividualDesignsFormValues) => { saveConfiguration(values); if (await flush()) router.push("/order/review"); };
+  const previewConfiguration = useWatch({ control }) as WorkingIndividualDesignsConfiguration;
+  const onSubmit = async (values: IndividualDesignsFormValues) => {
+    if (continueBlocked) return;
+    if (!artworkAcknowledged && !await acknowledge()) return;
+    saveConfiguration(values);
+    if (await flush()) router.push("/order/review");
+  };
   return <form noValidate onSubmit={handleSubmit(onSubmit)}>
     <input type="hidden" {...register("route")} />
     <FormErrorSummary errors={formState.errors} submitCount={formState.submitCount} />
-    <div className="space-y-5">
-      {artwork.map((record, designIndex) => <DesignCard key={record.id} record={record} designIndex={designIndex} control={control} register={register} setValue={setValue} errors={formState.errors} />)}
+    <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+      <div className="min-w-0">
+        <div className="space-y-5">
+          {artwork.map((record, designIndex) => <DesignCard key={record.id} record={record} designIndex={designIndex} control={control} register={register} setValue={setValue} errors={formState.errors} />)}
+        </div>
+        <div className="mt-6"><label htmlFor="individual-notes" className={labelClassName}>Optional project notes</label><textarea id="individual-notes" rows={5} maxLength={MAX_NOTES_LENGTH} className={`${inputClassName} resize-y py-3`} {...register("notes")} /></div>
+      </div>
+      <IndividualDesignsLayoutPreview artwork={artwork} configuration={previewConfiguration} />
     </div>
-    <div className="mt-6"><label htmlFor="individual-notes" className={labelClassName}>Optional project notes</label><textarea id="individual-notes" rows={5} maxLength={MAX_NOTES_LENGTH} className={`${inputClassName} resize-y py-3`} {...register("notes")} /></div>
-    <StepActions backHref="/order/artwork" continueLabel="Review draft" isSubmitting={formState.isSubmitting} />
+    {continueBlocked && <p className="mt-6 text-sm text-text-muted" aria-live="polite">{blockedReason}</p>}
+    <StepActions backHref="/order/start" continueLabel="Continue to Review" isSubmitting={formState.isSubmitting || continueBlocked} />
   </form>;
 }
 
@@ -118,7 +142,7 @@ function DesignCard({ record, designIndex, control, register, setValue, errors }
   return <fieldset className="min-w-0 rounded-control border border-border bg-panel p-4 shadow-[var(--card-shadow)] sm:p-5">
     <legend className="max-w-full break-words px-2 font-display text-xl font-semibold text-text-primary">{record.originalName}</legend>
     <input type="hidden" {...register(`designs.${designIndex}.artworkId`)} />
-    <ArtworkIdentity record={record} className="mb-5" />
+    <div className="mb-5 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><ArtworkIdentity record={record} previewSize="sm" hideName /><ArtworkRecordActions record={record} /></div>
     <SizeVariants designIndex={designIndex} control={control} register={register} setValue={setValue} errors={errors} />
     <fieldset className="mt-5 border-t border-border pt-5">
       <legend className="text-sm font-semibold text-text-primary">Do you want us to make changes to this artwork?</legend>

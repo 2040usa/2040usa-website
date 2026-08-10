@@ -1,5 +1,5 @@
 export type OrderRoute = "gang-sheet" | "individual-designs";
-export type OrderStepId = "start" | "artwork" | "configure" | "review";
+export type OrderStepId = "start" | "artwork" | "review";
 
 export type WidthSizeVariant = { id: string; method: "width"; width: number; quantity: number };
 export type HeightSizeVariant = { id: string; method: "height"; height: number; quantity: number };

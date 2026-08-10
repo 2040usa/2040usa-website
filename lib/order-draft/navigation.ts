@@ -12,8 +12,7 @@ export function parseOrderRouteQuery(value: unknown) {
 
 export function getEarliestIncompleteStep(draft: GuardDraft): OrderStepId {
   if (!draft.selectedRoute || !draft.startingPointConfirmed) return "start";
-  if (!draft.artworkAcknowledged) return "artwork";
-  if (!draft.configuration || draft.configuration.route !== draft.selectedRoute) return "configure";
+  if (!draft.artworkAcknowledged || !draft.configuration || draft.configuration.route !== draft.selectedRoute) return "artwork";
   return "review";
 }
 

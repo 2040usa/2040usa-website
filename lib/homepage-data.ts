@@ -18,8 +18,7 @@ export const workflowOptions = ORDER_ROUTE_OPTIONS.map((option) => ({
 
 export const processSteps = [
   { title: "Choose a route", detail: "Start with an arranged gang sheet or individual designs.", icon: Layers3 },
-  { title: "Upload", detail: "Add files through the private resumable upload.", icon: Upload },
-  { title: "Project details", detail: "Save dimensions, quantities, and requested changes.", icon: FileCheck2 },
+  { title: "Artwork & Layout", detail: "Upload files, configure each artwork, and review the current layout preview.", icon: Upload },
   { title: "Review draft", detail: "Check the saved draft before this prototype ends.", icon: Layers3 },
 ] as const;
 

@@ -26,18 +26,19 @@ export function OrderRouteGuard({ step, children }: { step: OrderStepId; childre
     artworkAcknowledged,
     configuration,
   });
-  const needsReadyArtwork = step === "configure" || step === "review";
+  const needsReadyArtwork = step === "review";
+  const needsArtworkSnapshot = step === "artwork" || step === "review";
   const redirectPath = needsReadyArtwork && artwork.state === "ready" && !artwork.readiness.ready ? "/order/artwork" : draftRedirectPath;
 
   useEffect(() => {
     if (hydrationState === "ready" && redirectPath) router.replace(redirectPath);
   }, [hydrationState, redirectPath, router]);
 
-  if (hydrationState === "initializing" || (needsReadyArtwork && (artwork.state === "idle" || artwork.state === "loading"))) {
+  if (hydrationState === "initializing" || (needsArtworkSnapshot && (artwork.state === "idle" || artwork.state === "loading"))) {
     return <div aria-live="polite"><h1 className="font-display text-4xl font-semibold text-text-primary">Initializing your draft.</h1><p className="mt-4 text-sm text-text-muted">Checking for securely stored project details.</p></div>;
   }
 
-  if (needsReadyArtwork && artwork.state === "error") {
+  if (needsArtworkSnapshot && artwork.state === "error") {
     return <div role="alert" className="rounded-control border border-error/30 bg-panel p-5"><h1 className="font-display text-4xl font-semibold text-text-primary">Your artwork could not be checked.</h1><p className="mt-4 text-sm text-error">{artwork.error}</p><ActionButton type="button" className="mt-6" onClick={() => void artwork.reconcile()}>Retry artwork check</ActionButton></div>;
   }
 

@@ -138,7 +138,7 @@ export function ArtworkProvider({ children }: { children: ReactNode }) {
       setState("mutating");
       let completedSuccessfully = false;
       try {
-        const replaced = await runSerialized(async () => {
+        const replaced = await runAfterDraftFlush(async () => {
           const sequence = beginCanonicalOperation();
           try {
             const snapshot = await parseArtworkSnapshotWithDraft(await fetch(`/api/artwork/${artworkId}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draftId }) }));
