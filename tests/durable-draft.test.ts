@@ -80,8 +80,8 @@ describe("draft request and lifecycle validation", () => {
   it("does not regress a canonical draft when an older response arrives last", () => {
     const store = createOrderDraftStore();
     const id = "71e9305b-56f3-4df3-85c0-bbf8ca6e2c25";
-    store.getState().hydrateDurableDraft({ id, version: 4, status: "active", updatedAt: "2026-08-03T12:04:00.000Z", selectedRoute: "individual-designs", startingPointConfirmed: true, artworkAcknowledged: false, workingConfiguration: { route: "individual-designs", designs: [], notes: "newer" }, configuration: null, lastCompletedStep: 1 });
-    store.getState().hydrateDurableDraft({ id, version: 3, status: "active", updatedAt: "2026-08-03T12:03:00.000Z", selectedRoute: "individual-designs", startingPointConfirmed: true, artworkAcknowledged: false, workingConfiguration: { route: "individual-designs", designs: [], notes: "older" }, configuration: null, lastCompletedStep: 1 });
+    store.getState().hydrateDurableDraft({ id, version: 4, status: "active", updatedAt: "2026-08-03T12:04:00.000Z", selectedRoute: "individual-designs", startingPointConfirmed: true, artworkAcknowledged: false, workingConfiguration: { route: "individual-designs", designs: [], layoutPreferences: { mode: "efficient", spacingPreset: "standard", customSpacing: "" }, notes: "newer" }, configuration: null, lastCompletedStep: 1 });
+    store.getState().hydrateDurableDraft({ id, version: 3, status: "active", updatedAt: "2026-08-03T12:03:00.000Z", selectedRoute: "individual-designs", startingPointConfirmed: true, artworkAcknowledged: false, workingConfiguration: { route: "individual-designs", designs: [], layoutPreferences: { mode: "efficient", spacingPreset: "standard", customSpacing: "" }, notes: "older" }, configuration: null, lastCompletedStep: 1 });
     expect(store.getState()).toMatchObject({ serverVersion: 4, workingConfiguration: { notes: "newer" } });
   });
 

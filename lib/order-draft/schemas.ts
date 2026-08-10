@@ -7,6 +7,13 @@ import {
   MAX_PRINT_QUANTITY,
   ORDER_ROUTE_VALUES,
 } from "@/lib/order-draft/constants";
+import {
+  DEFAULT_LAYOUT_MODE,
+  DEFAULT_SPACING_INCHES,
+  MAX_CUSTOM_SPACING_INCHES,
+  MIN_CUSTOM_SPACING_INCHES,
+  SPACING_PRESETS,
+} from "@/lib/gang-sheet-layout/constants";
 
 const numericInput = (value: unknown) => {
   if (typeof value !== "string") return value;
@@ -19,6 +26,16 @@ const quantity = z.preprocess(numericInput, positiveNumberSchema("Quantity").int
 const notesSchema = z.string().max(MAX_NOTES_LENGTH, `Notes must be ${MAX_NOTES_LENGTH} characters or fewer.`);
 const stableIdSchema = z.string().min(1, "Each size needs a stable identifier.").max(100);
 const artworkIdSchema = z.uuid("Artwork identifier is invalid.");
+const layoutModeSchema = z.enum(["efficient", "grouped"]);
+const completedLayoutPreferencesSchema = z.object({
+  mode: layoutModeSchema,
+  spacing: z.number().finite().min(MIN_CUSTOM_SPACING_INCHES).max(MAX_CUSTOM_SPACING_INCHES),
+}).strict().default({ mode: DEFAULT_LAYOUT_MODE, spacing: DEFAULT_SPACING_INCHES });
+const workingLayoutPreferencesSchema = z.object({
+  mode: layoutModeSchema,
+  spacingPreset: z.enum(["tight", "standard", "extra", "custom"]),
+  customSpacing: z.string().max(40),
+}).strict().default({ mode: DEFAULT_LAYOUT_MODE, spacingPreset: "standard", customSpacing: "" });
 
 export const orderRouteSchema = z.enum(ORDER_ROUTE_VALUES);
 
@@ -68,6 +85,7 @@ export const individualDesignsConfigurationSchema = z.object({
   designs: z.array(individualDesignSchema).min(1, "Upload and configure at least one design.").max(MAX_DYNAMIC_ROWS).superRefine((designs, context) => {
     uniqueArtworkIds(designs, context);
   }),
+  layoutPreferences: completedLayoutPreferencesSchema,
   notes: notesSchema,
 }).strict();
 
@@ -127,6 +145,7 @@ export const gangSheetFormSchema = z.object({
 export const individualDesignsFormSchema = z.object({
   route: z.literal("individual-designs"),
   designs: z.array(workingDesignSchema).min(1, "Upload and configure at least one design.").max(MAX_DYNAMIC_ROWS),
+  layoutPreferences: workingLayoutPreferencesSchema,
   notes: workingTextSchema,
 }).strict().superRefine((configuration, context) => {
   if (new Set(configuration.designs.map((design) => design.artworkId)).size !== configuration.designs.length) {
@@ -152,9 +171,21 @@ export const individualDesignsFormSchema = z.object({
     if (design.wantsChanges === "yes" && !design.changeInstructions.trim()) context.addIssue({ code: "custom", path: ["designs", designIndex, "changeInstructions"], message: "Describe the changes you want us to review." });
     if (design.wantsChanges !== "yes" && design.changeInstructions.length > 0) context.addIssue({ code: "custom", path: ["designs", designIndex, "changeInstructions"], message: "Choose Yes before adding change instructions." });
   });
+  if (configuration.layoutPreferences.spacingPreset === "custom") {
+    const spacing = Number(configuration.layoutPreferences.customSpacing);
+    if (!Number.isFinite(spacing) || spacing < MIN_CUSTOM_SPACING_INCHES || spacing > MAX_CUSTOM_SPACING_INCHES) {
+      context.addIssue({ code: "custom", path: ["layoutPreferences", "customSpacing"], message: `Enter custom spacing from ${MIN_CUSTOM_SPACING_INCHES} to ${MAX_CUSTOM_SPACING_INCHES} inches.` });
+    }
+  }
 }).transform((configuration) => individualDesignsConfigurationSchema.parse({
   route: configuration.route,
   notes: configuration.notes,
+  layoutPreferences: {
+    mode: configuration.layoutPreferences.mode,
+    spacing: configuration.layoutPreferences.spacingPreset === "custom"
+      ? Number(configuration.layoutPreferences.customSpacing)
+      : SPACING_PRESETS[configuration.layoutPreferences.spacingPreset],
+  },
   designs: configuration.designs.map((design) => ({
     artworkId: design.artworkId,
     wantsChanges: design.wantsChanges === "yes",
@@ -174,6 +205,7 @@ export const workingOrderConfigurationSchema = z.discriminatedUnion("route", [
     designs: z.array(workingDesignSchema).max(MAX_DYNAMIC_ROWS).superRefine((designs, context) => {
       if (new Set(designs.map((design) => design.artworkId)).size !== designs.length) context.addIssue({ code: "custom", message: "Each artwork file may be configured only once." });
     }),
+    layoutPreferences: workingLayoutPreferencesSchema,
     notes: workingTextSchema,
   }).strict(),
 ]);

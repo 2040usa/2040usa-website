@@ -13,6 +13,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { useArtwork } from "@/components/artwork/artwork-provider";
 import { ArtworkIdentity } from "@/components/artwork/artwork-preview";
+import { IndividualDesignsLayoutPreview } from "@/components/order/layout-preview";
+import { toWorkingConfiguration } from "@/lib/order-draft/working-configuration";
 
 export function ReviewStep() {
   const router = useRouter();
@@ -43,6 +45,7 @@ export function ReviewStep() {
         <section className="mt-4 rounded-control border border-border bg-panel shadow-[var(--card-shadow)]" aria-labelledby="artwork-layout-review-title">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border p-5"><div><p className="text-xs font-semibold text-text-secondary">Artwork &amp; Layout</p><h2 id="artwork-layout-review-title" className="mt-2 font-display text-2xl font-semibold text-text-primary">Uploaded artwork and project details</h2></div><Link href="/order/artwork" className="text-sm font-semibold text-primary-action underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">Edit Artwork &amp; Layout</Link></div>
           <div data-testid="configuration-summary-grid" className={cn("grid gap-px bg-border", summary.length > 1 && "md:grid-cols-2")}>{summary.map((group) => { const record = artworkRecords.find((item) => item.id === group.artworkId); return <div key={group.artworkId} className="min-w-0 bg-background p-5"><h3 className="break-words font-display text-xl font-semibold text-text-primary">{group.title}</h3>{record && <ArtworkIdentity record={record} previewSize="sm" hideName className="mt-4" />}<p className="mt-3 text-xs font-semibold text-success">Canonical upload complete</p><dl className="mt-4 space-y-3">{group.items.map((item) => <div key={`${item.label}-${item.value}`} className="flex items-start justify-between gap-4 border-t border-border pt-3"><dt className="text-xs text-text-muted">{item.label}</dt><dd className="text-right text-xs text-text-primary">{item.value}</dd></div>)}</dl></div>; })}</div>
+          {configuration.route === "individual-designs" && <div className="border-t border-border bg-background p-5"><IndividualDesignsLayoutPreview artwork={artworkRecords.filter((record) => record.status === "uploaded" && record.route === "individual-designs")} configuration={toWorkingConfiguration(configuration)} readOnly /></div>}
           {configuration.notes && <div className="border-t border-border p-5"><h3 className="text-sm font-semibold text-text-secondary">Project notes</h3><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-text-muted">{configuration.notes}</p></div>}
         </section>
         <div className="mt-6 rounded-control border border-border-strong bg-raised p-5"><p className="text-sm font-semibold text-text-primary">Draft complete</p><p className="mt-2 text-sm leading-6 text-text-muted">This experience does not calculate a price, accept payment, or submit an order.</p><ActionButton type="button" disabled className="mt-4 w-full sm:w-auto">Submission unavailable</ActionButton></div>

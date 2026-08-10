@@ -22,7 +22,7 @@ export const ORDER_ROUTE_OPTIONS = [
     name: "Individual Designs",
     description: "Upload separate designs and specify the print sizes and quantities you need.",
     customerHas: "One or more separate artwork files.",
-    studioHandles: "Arranging the designs into a gang sheet after reviewing your requests.",
+    studioHandles: "Automatically arranging the designs into a 22-inch-wide gang-sheet preview.",
     shortLabel: "Needs arrangement",
   },
 ] as const satisfies readonly { value: OrderRoute; name: string; description: string; customerHas: string; studioHandles: string; shortLabel: string }[];

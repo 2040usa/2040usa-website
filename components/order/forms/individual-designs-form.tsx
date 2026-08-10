@@ -20,6 +20,8 @@ import { StepActions } from "@/components/order/step-actions";
 import { ArtworkIdentity } from "@/components/artwork/artwork-preview";
 import { ArtworkRecordActions } from "@/components/artwork/artwork-file-list";
 import { IndividualDesignsLayoutPreview } from "@/components/order/layout-preview";
+import type { WorkingLayoutPreferences } from "@/lib/gang-sheet-layout/types";
+import { DEFAULT_LAYOUT_MODE } from "@/lib/gang-sheet-layout/constants";
 
 type IndividualDesignsControl = Control<WorkingIndividualDesignsConfiguration, unknown, IndividualDesignsFormValues>;
 
@@ -30,6 +32,7 @@ const newDesign = (artworkId: string): WorkingIndividualDesignConfiguration => (
   wantsChanges: "",
   changeInstructions: "",
 });
+const defaultLayoutPreferences = (): WorkingLayoutPreferences => ({ mode: DEFAULT_LAYOUT_MODE, spacingPreset: "standard", customSpacing: "" });
 
 function SizeVariants({ designIndex, control, register, setValue, errors }: {
   designIndex: number;
@@ -68,7 +71,7 @@ function SizeVariants({ designIndex, control, register, setValue, errors }: {
           </div>
           {fields.length > 1 && <ActionButton type="button" variant="quiet" className="text-error" onClick={() => remove(sizeIndex)} aria-label={`Remove requested size ${sizeIndex + 1}`}><Trash2 aria-hidden size={14} /> Remove</ActionButton>}
         </div>
-        {(method === "width" || method === "height") && <p className="mt-3 text-xs text-text-muted">The other dimension stays proportional and will be confirmed during artwork review; this draft does not fabricate dimensions from pixels.</p>}
+        {(method === "width" || method === "height") && <p className="mt-3 text-xs text-text-muted">The layout preview keeps the other dimension proportional using raster aspect ratio only. Pixel dimensions are not treated as physical inches or DPI.</p>}
       </fieldset>;
     })}
     <ActionButton type="button" variant="secondary" disabled={fields.length >= MAX_DYNAMIC_ROWS} onClick={() => append(newSize())}><Plus aria-hidden size={15} /> Add another size</ActionButton>
@@ -88,7 +91,7 @@ export function IndividualDesignsForm({ continueBlocked, blockedReason }: { cont
   const artworkAcknowledged = useOrderDraft((state) => state.artworkAcknowledged);
   const saveConfiguration = useOrderDraft((state) => state.saveConfiguration);
   const { flush } = useOrderDraftPersistence();
-  const initial = working ?? (completed ? toWorkingConfiguration(completed) : { route: "individual-designs" as const, designs: artwork.map((record) => newDesign(record.id)), notes: "" });
+  const initial = working ?? (completed ? toWorkingConfiguration(completed) : { route: "individual-designs" as const, designs: artwork.map((record) => newDesign(record.id)), layoutPreferences: defaultLayoutPreferences(), notes: "" });
   const { control, register, handleSubmit, formState, watch, reset, getValues, setValue } = useForm<WorkingIndividualDesignsConfiguration, unknown, IndividualDesignsFormValues>({
     resolver: zodResolver(individualDesignsFormSchema) as Resolver<WorkingIndividualDesignsConfiguration, unknown, IndividualDesignsFormValues>,
     defaultValues: initial,
@@ -105,7 +108,7 @@ export function IndividualDesignsForm({ continueBlocked, blockedReason }: { cont
       return replaced ? { ...replaced, artworkId: record.id } : newDesign(record.id);
     });
     if (next.length !== current.designs?.length || next.some((design, index) => design.artworkId !== current.designs?.[index]?.artworkId)) {
-      reset({ route: "individual-designs", designs: next, notes: current.notes ?? "" }, { keepDirtyValues: true });
+      reset({ route: "individual-designs", designs: next, layoutPreferences: current.layoutPreferences ?? defaultLayoutPreferences(), notes: current.notes ?? "" }, { keepDirtyValues: true });
     }
   }, [artwork, getValues, reset]);
 
@@ -126,7 +129,12 @@ export function IndividualDesignsForm({ continueBlocked, blockedReason }: { cont
         </div>
         <div className="mt-6"><label htmlFor="individual-notes" className={labelClassName}>Optional project notes</label><textarea id="individual-notes" rows={5} maxLength={MAX_NOTES_LENGTH} className={`${inputClassName} resize-y py-3`} {...register("notes")} /></div>
       </div>
-      <IndividualDesignsLayoutPreview artwork={artwork} configuration={previewConfiguration} />
+      <IndividualDesignsLayoutPreview
+        artwork={artwork}
+        configuration={previewConfiguration}
+        customSpacingError={formState.errors.layoutPreferences?.customSpacing?.message}
+        onPreferencesChange={(preferences) => setValue("layoutPreferences", preferences, { shouldDirty: true, shouldValidate: true })}
+      />
     </div>
     {continueBlocked && <p className="mt-6 text-sm text-text-muted" aria-live="polite">{blockedReason}</p>}
     <StepActions backHref="/order/start" continueLabel="Continue to Review" isSubmitting={formState.isSubmitting || continueBlocked} />

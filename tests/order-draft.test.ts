@@ -13,6 +13,7 @@ const artworkB = "00000000-0000-4000-8000-000000000002";
 const gangSheet = { route: "gang-sheet" as const, sheets: [{ artworkId: artworkA, copies: 2, finishedWidth: 22, finishedLength: 36 }], notes: "Local launch" };
 const individual: IndividualDesignsConfiguration = {
   route: "individual-designs",
+  layoutPreferences: { mode: "efficient", spacing: 0.25 },
   designs: [{ artworkId: artworkA, sizes: [
     { id: "size-width", method: "width", width: 11, quantity: 10 },
     { id: "size-height", method: "height", height: 8, quantity: 4 },
@@ -73,6 +74,16 @@ describe("route configuration schemas", () => {
     const valid = { ...working, designs: [{ ...working.designs[0], sizes: [{ id: "x", method: "height", dimension: "8.5", quantity: "3" }], wantsChanges: "no" }] };
     expect(individualDesignsFormSchema.parse(valid).designs[0].sizes[0]).toEqual({ id: "x", method: "height", height: 8.5, quantity: 3 });
   });
+
+  it("defaults legacy layout preferences and normalizes custom spacing", () => {
+    const legacy: Record<string, unknown> = structuredClone(individual);
+    delete legacy.layoutPreferences;
+    expect(individualDesignsConfigurationSchema.parse(legacy).layoutPreferences).toEqual({ mode: "efficient", spacing: 0.25 });
+    const working = { route: "individual-designs", designs: [{ artworkId: artworkA, sizes: [{ id: "x", method: "width", dimension: "5", quantity: "2" }], wantsChanges: "no", changeInstructions: "" }], notes: "" };
+    expect(individualDesignsFormSchema.parse(working).layoutPreferences).toEqual({ mode: "efficient", spacing: 0.25 });
+    expect(individualDesignsFormSchema.parse({ ...working, layoutPreferences: { mode: "grouped", spacingPreset: "custom", customSpacing: "0.375" } }).layoutPreferences).toEqual({ mode: "grouped", spacing: 0.375 });
+    expect(individualDesignsFormSchema.safeParse({ ...working, layoutPreferences: { mode: "efficient", spacingPreset: "custom", customSpacing: "" } }).success).toBe(false);
+  });
 });
 
 describe("artwork-linked synchronization", () => {
@@ -116,7 +127,7 @@ describe("draft navigation and state", () => {
 
   it("stores incomplete artwork-linked working state without completing details", () => {
     const store = createOrderDraftStore();
-    const working: WorkingOrderConfiguration = { route: "individual-designs", designs: [{ artworkId: artworkA, sizes: [{ id: "size", method: "", dimension: "", quantity: "" }], wantsChanges: "", changeInstructions: "" }], notes: "editing" };
+    const working: WorkingOrderConfiguration = { route: "individual-designs", designs: [{ artworkId: artworkA, sizes: [{ id: "size", method: "", dimension: "", quantity: "" }], wantsChanges: "", changeInstructions: "" }], layoutPreferences: { mode: "efficient", spacingPreset: "standard", customSpacing: "" }, notes: "editing" };
     store.getState().selectRoute("individual-designs");
     store.getState().confirmStartingPoint();
     store.getState().acknowledgeArtwork();

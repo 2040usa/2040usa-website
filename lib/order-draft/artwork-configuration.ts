@@ -1,5 +1,8 @@
 import { gangSheetConfigurationSchema, individualDesignsConfigurationSchema, workingOrderConfigurationSchema } from "@/lib/order-draft/schemas";
 import type { GangSheetConfiguration, IndividualDesignsConfiguration, OrderRoute, WorkingGangSheetConfiguration, WorkingIndividualDesignsConfiguration } from "@/lib/order-draft/types";
+import { DEFAULT_LAYOUT_MODE } from "@/lib/gang-sheet-layout/constants";
+
+const defaultWorkingLayoutPreferences = () => ({ mode: DEFAULT_LAYOUT_MODE, spacingPreset: "standard" as const, customSpacing: "" });
 
 export function createWorkingDesign(artworkId: string) {
   return { artworkId, sizes: [{ id: crypto.randomUUID(), method: "" as const, dimension: "", quantity: "1" }], wantsChanges: "" as const, changeInstructions: "" };
@@ -18,7 +21,7 @@ export function addWorkingArtwork(configuration: unknown, route: OrderRoute, art
     const current = parsed.success && parsed.data.route === route ? parsed.data : { route, sheets: [], notes: "" };
     return current.sheets.some((sheet) => sheet.artworkId === artworkId) ? current : { ...current, sheets: [...current.sheets, createWorkingGangSheet(artworkId)] };
   }
-  const current = parsed.success && parsed.data.route === route ? parsed.data : { route, designs: [], notes: "" };
+  const current = parsed.success && parsed.data.route === route ? parsed.data : { route, designs: [], layoutPreferences: defaultWorkingLayoutPreferences(), notes: "" };
   return current.designs.some((design) => design.artworkId === artworkId) ? current : { ...current, designs: [...current.designs, createWorkingDesign(artworkId)] };
 }
 

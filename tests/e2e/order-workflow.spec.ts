@@ -1,15 +1,54 @@
 import { type Page } from "@playwright/test";
+import { deflateSync } from "node:zlib";
 import { expect, test } from "./fixtures";
 
-const png = (name: string) => ({ name, mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64") });
+const png = (name: string, width = 1, height = 1) => ({ name, mimeType: "image/png", buffer: makePng(width, height) });
+
+function makePng(width: number, height: number) {
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4);
+  ihdr.set([8, 6, 0, 0, 0], 8);
+  const row = Buffer.alloc(width * 4 + 1, 255); row[0] = 0;
+  const image = deflateSync(Buffer.concat(Array.from({ length: height }, () => row)));
+  return Buffer.concat([signature, pngChunk("IHDR", ihdr), pngChunk("IDAT", image), pngChunk("IEND", Buffer.alloc(0))]);
+}
+
+function pngChunk(type: string, data: Buffer) {
+  const name = Buffer.from(type, "ascii");
+  const output = Buffer.alloc(data.length + 12);
+  output.writeUInt32BE(data.length, 0); name.copy(output, 4); data.copy(output, 8);
+  output.writeUInt32BE(crc32(Buffer.concat([name, data])), data.length + 8);
+  return output;
+}
+
+function crc32(data: Buffer) {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
 
 async function resetDraft(page: Page) {
   await page.goto("/order/start");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await page.evaluate(async () => {
-    const current = await fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()) as { draft: { id: string; version: number } | null };
-    if (current.draft) await fetch(`/api/order-drafts/${current.draft.id}/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedVersion: current.draft.version }) });
-  });
+  const origin = new URL(page.url()).origin;
+  let resetComplete = false;
+  let lastFailure = "";
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const currentResponse = await page.request.get(`${origin}/api/order-drafts/current`, { headers: { Origin: origin } });
+    expect(currentResponse.ok(), "cleanup current-draft read").toBe(true);
+    const current = await currentResponse.json() as { draft: { id: string; version: number } | null };
+    if (!current.draft) { resetComplete = true; break; }
+    const resetResponse = await page.request.post(`${origin}/api/order-drafts/${current.draft.id}/reset`, { headers: { Origin: origin }, data: { expectedVersion: current.draft.version } });
+    if (resetResponse.ok()) { resetComplete = true; break; }
+    lastFailure = `${resetResponse.status()} ${await resetResponse.text()}`;
+    if (![409, 500, 503].includes(resetResponse.status())) break;
+    await page.waitForTimeout(250 * (attempt + 1));
+  }
+  expect(resetComplete, `bounded draft cleanup failed: ${lastFailure}`).toBe(true);
   await page.reload();
   if (await page.getByText("Initializing your draft.").isVisible().catch(() => false)) {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("How do you want to start?");
@@ -179,8 +218,10 @@ test("Individual Designs links every upload to multiple size variants and reques
   await page.getByLabel("Quantity").nth(2).fill("3");
   await page.getByLabel("No, print it as uploaded").nth(1).check();
 
-  await expect(page.getByTestId("layout-preview")).toContainText("No optimized gang sheet has been generated.");
-  await expect(page.getByTestId("layout-preview")).not.toContainText(/utilization|price|\d+(?:\.\d+)?\s*(?:in|inch|inches)\s+of sheet/i);
+  await expect(page.getByTestId("layout-preview")).toContainText("Layout generation is incomplete");
+  await expect(page.getByTestId("layout-preview")).toContainText("Original Size has no verified physical dimensions");
+  await expect(page.getByTestId("selected-layout-length")).toHaveText("Pending");
+  await expect(page.getByTestId("layout-preview")).not.toContainText(/utilization|\$\d/i);
   await expect(page.getByTestId("layout-preview")).toContainText("33");
 
   await page.getByRole("button", { name: "Continue to Review" }).click();
@@ -199,6 +240,73 @@ test("Individual Designs links every upload to multiple size variants and reques
   await page.getByRole("link", { name: "Edit Artwork & Layout" }).click();
   await expect(page).toHaveURL(/\/order\/artwork$/);
   await expect(page.getByRole("group", { name: "front-logo.png" })).toBeVisible();
+});
+
+test("Individual Designs generates, compares, persists, and reviews deterministic layouts", async ({ page }) => {
+  await chooseRoute(page, "Individual Designs");
+  await uploadArtwork(page, png("wide-design.png", 2, 1), png("tall-design.png", 1, 2));
+  await expect(page.getByLabel("Most Cost Efficient")).toBeChecked();
+  await expect(page.getByLabel(/Standard/)).toBeChecked();
+
+  await configureFirstDesign(page, { method: "width", dimension: "10", quantity: "3" });
+  await page.getByLabel("Sizing method").nth(1).selectOption("height");
+  await page.getByLabel(/Finished height/).nth(0).fill("8");
+  await page.getByLabel("Quantity").nth(1).fill("4");
+  await page.getByLabel("No, print it as uploaded").nth(1).check();
+
+  await expect(page.getByTestId("gang-sheet-graphic")).toBeVisible();
+  await expect(page.getByTestId("layout-placement")).toHaveCount(7);
+  await expect(page.getByTestId("layout-comparison")).toBeVisible();
+  const efficient = Number((await page.getByTestId("selected-layout-length").textContent())?.replace(/[^0-9.]/g, ""));
+  const comparisonText = await page.getByTestId("layout-comparison").textContent() ?? "";
+  const groupedFromComparison = Number(comparisonText.match(/Keep Designs Together[^0-9]*([0-9.]+)/)?.[1]);
+  expect(efficient).toBeLessThanOrEqual(groupedFromComparison);
+
+  await page.getByLabel("Keep Designs Together").check();
+  await expect(page.getByTestId("gang-sheet-graphic").locator("svg")).toHaveAttribute("data-layout-mode", "grouped");
+  await expect(page.getByTestId("layout-group-band")).toHaveCount(2);
+  const grouped = await page.getByTestId("selected-layout-length").textContent();
+
+  await page.getByLabel("Most Cost Efficient").check();
+  await expect(page.getByTestId("gang-sheet-graphic").locator("svg")).toHaveAttribute("data-layout-mode", "efficient");
+  await page.getByLabel("Keep Designs Together").check();
+
+  await page.getByLabel("Custom").check();
+  await page.getByLabel(/Custom spacing/).fill("0.375");
+  await expect(page.getByTestId("layout-text-summary")).toContainText('0.375"');
+  await page.getByLabel(/Extra/).check();
+  await expect(page.getByTestId("selected-layout-length")).not.toHaveText(grouped ?? "");
+  const extraLength = await page.getByTestId("selected-layout-length").textContent();
+  await page.getByLabel("Quantity").first().fill("5");
+  await expect(page.getByTestId("layout-placement")).toHaveCount(9);
+  await expect(page.getByTestId("selected-layout-length")).not.toHaveText(extraLength ?? "");
+
+  await expect.poll(async () => page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()).then((body) => body.draft?.workingConfiguration?.layoutPreferences))).toEqual({ mode: "grouped", spacingPreset: "extra", customSpacing: "0.375" });
+  await page.reload();
+  await expect(page.getByLabel("Keep Designs Together")).toBeChecked();
+  await expect(page.getByLabel(/Extra/)).toBeChecked();
+  await expect(page.getByTestId("gang-sheet-graphic")).toBeVisible();
+
+  await page.getByRole("button", { name: "Continue to Review" }).click();
+  await expect(page).toHaveURL(/\/order\/review$/);
+  await expect(page.getByTestId("layout-text-summary")).toContainText("Keep Designs Together");
+  await expect(page.getByTestId("layout-text-summary")).toContainText('0.5"');
+  await expect(page.getByTestId("selected-layout-length")).not.toHaveText("Pending");
+  await expect(page.getByTestId("layout-preview")).not.toContainText(/\$\d|checkout|payment/i);
+  const completed = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()).then((body) => body.draft?.configuration));
+  expect(completed.layoutPreferences).toEqual({ mode: "grouped", spacing: 0.5 });
+  expect(JSON.stringify(completed)).not.toContain("placements");
+});
+
+test("layout preview rotates fitting artwork and reports oversize geometry honestly", async ({ page }) => {
+  await chooseRoute(page, "Individual Designs");
+  await uploadArtwork(page, png("rotation-design.png", 2, 1));
+  await configureFirstDesign(page, { method: "width", dimension: "24", quantity: "1" });
+  await expect(page.getByTestId("layout-placement")).toHaveAttribute("data-rotation", "90");
+  await page.getByLabel(/Finished width/).fill("50");
+  await expect(page.getByText(/Neither 0° nor 90° orientation fits/)).toBeVisible();
+  await expect(page.getByTestId("selected-layout-length")).toHaveText("Pending");
+  await expect.poll(async () => page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()).then((body) => body.draft?.workingConfiguration?.designs?.[0]?.sizes?.[0]?.dimension))).toBe("50");
 });
 
 test("configuration validation protects sizing exclusivity and change instructions", async ({ page }) => {
@@ -225,12 +333,14 @@ test("deletion prunes its artwork-linked working configuration", async ({ page }
   await page.getByLabel(/Finished height/).fill("5");
   await page.getByLabel("Quantity").nth(1).fill("7");
   await page.getByLabel("No, print it as uploaded").nth(1).check();
+  await expect(page.getByTestId("layout-placement")).toHaveCount(31);
   await page.getByRole("button", { name: "Remove delete-me.png" }).click();
   await expect(page.getByText("delete-me.png", { exact: true })).toHaveCount(0);
   await page.goto("/order/configure");
   await expect(page).toHaveURL(/\/order\/artwork$/);
   await expect(page.getByRole("group", { name: "keep-me.png" })).toBeVisible();
   await expect(page.getByRole("group", { name: "delete-me.png" })).toHaveCount(0);
+  await expect(page.getByTestId("layout-placement")).toHaveCount(7);
 });
 
 test("replacement uses a new canonical record and preserves design details", async ({ page }) => {
@@ -238,6 +348,7 @@ test("replacement uses a new canonical record and preserves design details", asy
   await uploadArtwork(page, png("old-design.png"));
   await expectCombinedWorkspace(page);
   await configureFirstDesign(page, { method: "height", dimension: "9", quantity: "12", changes: "Adjust the blue text." });
+  await page.getByLabel("Keep Designs Together").check();
   await page.getByRole("button", { name: "Continue to Review" }).click();
   await expect(page).toHaveURL(/\/order\/review$/);
   await expect(page.getByText("Set by height: 9 in · quantity 12")).toBeVisible();
@@ -248,6 +359,8 @@ test("replacement uses a new canonical record and preserves design details", asy
   await expect(page.getByLabel(/Finished height/)).toHaveValue("9");
   await expect(page.getByLabel("Quantity")).toHaveValue("12");
   await expect(page.getByLabel("Requested changes")).toHaveValue("Adjust the blue text.");
+  await expect(page.getByLabel("Keep Designs Together")).toBeChecked();
+  await expect(page.getByTestId("layout-placement")).toHaveCount(12);
   await page.getByRole("button", { name: "Replace old-design.png" }).click();
   await page.getByLabel("Choose artwork files").setInputFiles(png("new-design.png"));
   await expect(page.getByText("new-design.png", { exact: true })).toBeVisible({ timeout: 45_000 });
@@ -274,6 +387,8 @@ test("Print-Ready Gang Sheet configures and reviews every uploaded file", async 
   await page.getByLabel(/finished width/i).nth(1).fill("24");
   await page.getByLabel(/finished length/i).nth(1).fill("60");
   await expect(page.getByTestId(/gang-sheet-preview-/)).toHaveCount(2);
+  await expect(page.getByText("Layout Preference", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Spacing Between Transfers", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId(/gang-sheet-preview-/).nth(0).getByAltText("Private preview of arranged-sheet.png; not a print approval")).toBeVisible();
   await expect(page.getByTestId(/gang-sheet-preview-/).nth(1).getByAltText("Private preview of second-sheet.png; not a print approval")).toBeVisible();
   await expect(page.getByTestId(/gang-sheet-preview-/).nth(0)).toContainText("22 in × 48 in");
@@ -293,7 +408,9 @@ for (const width of [360, 768, 1440]) {
     await chooseRoute(page, "Individual Designs");
     await uploadArtwork(page, png("a-very-long-individual-design-filename-that-must-wrap-without-breaking-the-layout.png"));
     await expectCombinedWorkspace(page);
-    await page.getByRole("button", { name: "Add another size" }).click();
+    await configureFirstDesign(page, { method: "width", dimension: "10", quantity: "20" });
+    await expect(page.getByTestId("gang-sheet-graphic")).toBeVisible();
+    expect(await page.getByTestId("gang-sheet-graphic").evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     await expect(page.locator("h1")).toHaveCount(1);
   });

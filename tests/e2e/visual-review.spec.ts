@@ -28,18 +28,20 @@ const visualArtwork = {
   verifiedMimeType: "image/png", version: 2, replacementForId: null, createdAt: visualUpdatedAt, updatedAt: visualUpdatedAt,
 };
 
-async function mockIndividualDraft(page: Page, completed: boolean) {
+async function mockIndividualDraft(page: Page, completed: boolean, includeOriginal = true) {
+  const completedSizes = [{ id: "visual-size-width", method: "width", width: 11.5, quantity: 24 }, ...(includeOriginal ? [{ id: "visual-size-original", method: "original", quantity: 3 }] : [])];
+  const workingSizes = [{ id: "visual-size-width", method: "width", dimension: "11.5", quantity: "24" }, ...(includeOriginal ? [{ id: "visual-size-original", method: "original", dimension: "", quantity: "3" }] : [])];
   const configuration = completed ? {
     route: "individual-designs", notes: "", designs: [{
       artworkId: visualArtworkId,
-      sizes: [{ id: "visual-size-width", method: "width", width: 11.5, quantity: 24 }, { id: "visual-size-original", method: "original", quantity: 3 }],
+      sizes: completedSizes,
       wantsChanges: true, changeInstructions: "Remove the background and keep the fine outline.",
     }],
   } : null;
   const workingConfiguration = {
     route: "individual-designs", notes: "", designs: [{
       artworkId: visualArtworkId,
-      sizes: [{ id: "visual-size-width", method: "width", dimension: "11.5", quantity: "24" }, { id: "visual-size-original", method: "original", dimension: "", quantity: "3" }],
+      sizes: workingSizes,
       wantsChanges: "yes", changeInstructions: "Remove the background and keep the fine outline.",
     }],
   };
@@ -114,12 +116,13 @@ for (const viewport of viewports) {
   });
 
   test(`${viewport.name} Artwork & Layout workspace stacks without overflow`, async ({ page }) => {
-    await mockIndividualDraft(page, false);
+    await mockIndividualDraft(page, false, false);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/order/artwork");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Upload and configure your artwork.");
     await expect(page.getByRole("group", { name: /a-very-long-individual-design-filename/ })).toBeVisible();
-    await expect(page.getByTestId("layout-preview")).toContainText("No optimized gang sheet has been generated.");
+    await expect(page.getByTestId("gang-sheet-graphic")).toBeVisible();
+    await expect(page.getByTestId("layout-preview")).toContainText("Most Cost Efficient");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     await expect(page.locator("h1")).toHaveCount(1);
     await page.screenshot({ fullPage: true, path: `artifacts/visual-review/artwork-layout-${viewport.name}.png` });

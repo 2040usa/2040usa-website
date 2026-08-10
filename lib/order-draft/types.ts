@@ -1,3 +1,5 @@
+import type { LayoutPreferences, WorkingLayoutPreferences } from "@/lib/gang-sheet-layout/types";
+
 export type OrderRoute = "gang-sheet" | "individual-designs";
 export type OrderStepId = "start" | "artwork" | "review";
 
@@ -29,6 +31,7 @@ export type GangSheetConfiguration = {
 export type IndividualDesignsConfiguration = {
   route: "individual-designs";
   designs: IndividualDesignConfiguration[];
+  layoutPreferences: LayoutPreferences;
   notes: string;
 };
 
@@ -64,6 +67,7 @@ export type WorkingIndividualDesignConfiguration = {
 export type WorkingIndividualDesignsConfiguration = {
   route: "individual-designs";
   designs: WorkingIndividualDesignConfiguration[];
+  layoutPreferences: WorkingLayoutPreferences;
   notes: string;
 };
 
