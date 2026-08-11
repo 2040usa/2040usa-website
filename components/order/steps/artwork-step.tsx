@@ -17,6 +17,7 @@ export function ArtworkStep() {
   const draftId = useOrderDraft((state) => state.serverDraftId);
   const saveState = useOrderDraft((state) => state.saveState);
   const { records, readiness, state, error } = useArtwork();
+  const hasUploadedArtwork = readiness.uploadedCount > 0;
   const unresolvedCanonicalArtwork = records.some((record) => record.status !== "uploaded");
   const continueBlocked = !readiness.ready
     || uploadActivity
@@ -49,16 +50,16 @@ export function ArtworkStep() {
             <ul className="mt-3 list-disc space-y-1 pl-5">{ARTWORK_GUIDANCE[selectedRoute].checklist.map((item) => <li key={item}>{item}</li>)}</ul>
           </div>
         </details>
-        {draftId && !readiness.ready && <ArtworkUploader draftId={draftId} onActivityChange={setUploadActivity} />}
+        {draftId && !hasUploadedArtwork && <div className="xl:w-[60%]" data-testid="empty-artwork-uploader"><ArtworkUploader draftId={draftId} onActivityChange={setUploadActivity} /></div>}
         <ArtworkFileList includeUploaded={false} />
-        {readiness.ready && <p className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-success" aria-live="polite"><Check aria-hidden="true" size={17} />{readiness.uploadedCount} {selectedRoute === "gang-sheet" ? `gang sheet${readiness.uploadedCount === 1 ? "" : "s"}` : `design${readiness.uploadedCount === 1 ? "" : "s"}`} uploaded</p>}
+        {hasUploadedArtwork && <p className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-success" aria-live="polite"><Check aria-hidden="true" size={17} />{readiness.uploadedCount} {selectedRoute === "gang-sheet" ? `gang sheet${readiness.uploadedCount === 1 ? "" : "s"}` : `design${readiness.uploadedCount === 1 ? "" : "s"}`} uploaded</p>}
         {error && <p role="alert" className="mt-4 text-sm text-error">{error}</p>}
-        <section className="mt-8" aria-label="Artwork and layout workspace">
+        {hasUploadedArtwork && <section className="mt-8" aria-label="Artwork and layout workspace">
           <div>
-            {selectedRoute === "gang-sheet" && <GangSheetForm continueBlocked={continueBlocked} blockedReason={blockedReason} addArtworkAction={draftId && readiness.ready ? <ArtworkUploader draftId={draftId} onActivityChange={setUploadActivity} /> : null} />}
-            {selectedRoute === "individual-designs" && <IndividualDesignsForm continueBlocked={continueBlocked} blockedReason={blockedReason} addArtworkAction={draftId && readiness.ready ? <ArtworkUploader draftId={draftId} onActivityChange={setUploadActivity} /> : null} />}
+            {selectedRoute === "gang-sheet" && <GangSheetForm continueBlocked={continueBlocked} blockedReason={blockedReason} addArtworkAction={draftId ? <ArtworkUploader draftId={draftId} onActivityChange={setUploadActivity} /> : null} />}
+            {selectedRoute === "individual-designs" && <IndividualDesignsForm continueBlocked={continueBlocked} blockedReason={blockedReason} addArtworkAction={draftId ? <ArtworkUploader draftId={draftId} onActivityChange={setUploadActivity} /> : null} />}
           </div>
-        </section>
+        </section>}
       </div>}
     </OrderRouteGuard>
   );

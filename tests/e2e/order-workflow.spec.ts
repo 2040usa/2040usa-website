@@ -205,7 +205,8 @@ test("selection previews locally, auto-starts, and keeps reservation failure ret
   });
   await expect(page.getByAltText("Local preview of automatic-preview.png; not a print approval")).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "Temporary reservation failure" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue to Review" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Continue to Review" })).toHaveCount(0);
+  await expect(page.getByTestId("layout-preview")).toHaveCount(0);
   await page.unroute("**/api/order-drafts/*/artwork");
   await page.getByRole("button", { name: "Retry reservation for automatic-preview.png" }).click();
   await expect(page.getByTestId("compact-artwork-uploader")).toBeVisible({ timeout: 45_000 });
@@ -362,6 +363,7 @@ test("deletion prunes its artwork-linked working configuration", async ({ page }
   await page.getByLabel("Quantity").nth(1).fill("7");
   await page.getByLabel("Print as uploaded").nth(1).check();
   await expect(page.getByTestId("layout-placement")).toHaveCount(31);
+  const lengthBeforeRemoval = await page.getByTestId("selected-layout-length").textContent();
   await page.getByRole("button", { name: "Remove delete-me.png" }).click();
   await expect(page.getByText("delete-me.png", { exact: true })).toHaveCount(0);
   await page.goto("/order/configure");
@@ -369,6 +371,101 @@ test("deletion prunes its artwork-linked working configuration", async ({ page }
   await expect(page.getByRole("group", { name: "keep-me.png" })).toBeVisible();
   await expect(page.getByRole("group", { name: "delete-me.png" })).toHaveCount(0);
   await expect(page.getByTestId("layout-placement")).toHaveCount(7);
+  await expect(page.getByTestId("selected-layout-length")).not.toHaveText(lengthBeforeRemoval ?? "");
+});
+
+test("removing the final configured design leaves a durable empty artwork state", async ({ page }) => {
+  await chooseRoute(page, "Individual Designs");
+  await uploadArtwork(page, png("remove-final.png", 2, 1));
+  await configureFirstDesign(page, { method: "width", dimension: "8", quantity: "4" });
+  await expect(page.getByTestId("layout-placement")).toHaveCount(4);
+
+  await page.getByRole("button", { name: "Remove remove-final.png" }).click();
+  await expect(page.getByText("remove-final.png", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("layout-preview")).toHaveCount(0);
+  await expect(page.getByTestId("empty-artwork-uploader")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText("remove-final.png", { exact: true })).toHaveCount(0);
+  const current = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json())) as {
+    draft: { workingConfiguration: { designs: unknown[] } | null; configuration: unknown };
+  };
+  expect(current.draft.workingConfiguration?.designs ?? []).toEqual([]);
+  expect(current.draft.configuration).toBeNull();
+});
+
+test("removing artwork after Review completion clears the completed layout safely", async ({ page }) => {
+  await chooseRoute(page, "Individual Designs");
+  await uploadArtwork(page, png("remove-after-review.png", 2, 1));
+  await configureFirstDesign(page, { method: "width", dimension: "8", quantity: "4" });
+  await page.getByRole("button", { name: "Continue to Review" }).click();
+  await expect(page).toHaveURL(/\/order\/review$/);
+  await page.getByRole("link", { name: "Edit Artwork & Layout" }).click();
+  await expect(page).toHaveURL(/\/order\/artwork$/);
+
+  await page.getByRole("button", { name: "Remove remove-after-review.png" }).click();
+  await expect(page.getByText("remove-after-review.png", { exact: true })).toHaveCount(0);
+  const current = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json())) as {
+    draft: { artworkAcknowledged: boolean; workingConfiguration: { designs: unknown[] } | null; configuration: unknown };
+  };
+  expect(current.draft.artworkAcknowledged).toBe(false);
+  expect(current.draft.workingConfiguration?.designs ?? []).toEqual([]);
+  expect(current.draft.configuration).toBeNull();
+});
+
+test("removing configured print-ready artwork preserves only the remaining sheets", async ({ page }) => {
+  await chooseRoute(page, "Print-Ready Gang Sheet");
+  await uploadArtwork(page, png("remove-sheet.png"), png("keep-sheet.png"));
+  await page.getByLabel(/Finished width/).nth(0).fill("22");
+  await page.getByLabel(/Finished length/).nth(0).fill("18");
+  await page.getByLabel("Copies").nth(0).fill("2");
+  await page.getByLabel(/Finished width/).nth(1).fill("20");
+  await page.getByLabel(/Finished length/).nth(1).fill("12");
+  await page.getByLabel("Copies").nth(1).fill("3");
+
+  await page.getByRole("button", { name: "Remove remove-sheet.png" }).click();
+  await expect(page.getByText("remove-sheet.png", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "keep-sheet.png" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("remove-sheet.png", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel(/Finished width/)).toHaveValue("20");
+  await expect(page.getByLabel(/Finished length/)).toHaveValue("12");
+  await expect(page.getByLabel("Copies")).toHaveValue("3");
+
+  await page.getByRole("button", { name: "Remove keep-sheet.png" }).click();
+  await expect(page.getByText("keep-sheet.png", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("layout-preview")).toHaveCount(0);
+  await expect(page.getByTestId("empty-artwork-uploader")).toBeVisible();
+});
+
+test("a genuine artwork deletion failure stays recoverable without an uncaught browser error", async ({ page, runtimeMonitor }) => {
+  await chooseRoute(page, "Individual Designs");
+  await uploadArtwork(page, png("delete-retry.png"));
+  const current = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json())) as { draft: Record<string, unknown> & { id: string } };
+  const snapshot = await page.evaluate((draftId) => fetch(`/api/order-drafts/${draftId}/artwork`, { cache: "no-store" }).then((response) => response.json()), current.draft.id) as { artwork: Array<Record<string, unknown> & { id: string; version: number }>; readiness: Record<string, unknown> };
+  const deletionPath = `/api/artwork/${snapshot.artwork[0].id}`;
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.route(`**${deletionPath}`, async (route) => {
+    if (route.request().method() !== "DELETE") return route.continue();
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "ARTWORK_CLEANUP_INCOMPLETE", message: "The artwork object could not be removed. Retry deletion." },
+        artwork: [{ ...snapshot.artwork[0], status: "deleting", uploadedAt: null, verifiedSizeBytes: null, verifiedMimeType: null, version: snapshot.artwork[0].version + 1 }],
+        readiness: { ...snapshot.readiness, ready: false, uploadedCount: 0, totalVerifiedBytes: 0 },
+        draft: current.draft,
+      }),
+    });
+  });
+
+  await runtimeMonitor.expectHttpFailure({ method: "DELETE", path: deletionPath, status: 503 }, async () => {
+    await page.getByRole("button", { name: "Remove delete-retry.png" }).click();
+  });
+  await expect(page.getByText("The artwork object could not be removed. Retry deletion.").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry delete delete-retry.png" })).toBeVisible();
+  await expect.poll(() => pageErrors).toEqual([]);
 });
 
 test("replacement uses a new canonical record and preserves design details", async ({ page }) => {

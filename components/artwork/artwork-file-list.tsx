@@ -39,11 +39,16 @@ export function ArtworkRecordActions({ record }: { record: CanonicalArtworkRecor
   const { remove, state, selectRecoveryTarget } = useArtwork();
   const recovery = classifyArtworkRecovery(record);
   const canSelectRecovery = ["resume", "retry", "restart-expired", "restart-missing"].includes(recovery.kind);
+  const requestRemoval = () => {
+    // The provider retains the visible error and recovery state. Contain the
+    // rejected promise at the click boundary so it is not also unhandled.
+    void remove(record).catch(() => undefined);
+  };
   return <div className="flex flex-wrap gap-3">
     {record.status === "uploaded" && <ActionButton type="button" variant="secondary" disabled={state === "mutating"} aria-label={`Replace ${record.originalName}`} onClick={() => selectRecoveryTarget(record)}><RotateCcw aria-hidden="true" size={14} />Replace</ActionButton>}
     {canSelectRecovery && recovery.kind !== "none" && <ActionButton type="button" variant="secondary" disabled={state === "mutating"} aria-label={`${recovery.label} ${record.originalName}`} onClick={() => selectRecoveryTarget(record)}><RotateCcw aria-hidden="true" size={14} />{recovery.label}</ActionButton>}
-    {recovery.kind === "remove-invalid" && <ActionButton type="button" variant="quiet" disabled={state === "mutating"} aria-label={`Remove invalid upload ${record.originalName}`} onClick={() => void remove(record)}><Trash2 aria-hidden="true" size={14} />Remove invalid upload</ActionButton>}
-    {recovery.kind === "retry-delete" && <ActionButton type="button" variant="quiet" disabled={state === "mutating"} aria-label={`Retry delete ${record.originalName}`} onClick={() => void remove(record)}><RotateCcw aria-hidden="true" size={14} />Retry delete</ActionButton>}
-    {recovery.kind !== "remove-invalid" && recovery.kind !== "retry-delete" && <ActionButton type="button" variant="quiet" disabled={state === "mutating"} aria-label={`Remove ${record.originalName}`} onClick={() => void remove(record)}><Trash2 aria-hidden="true" size={14} />Remove</ActionButton>}
+    {recovery.kind === "remove-invalid" && <ActionButton type="button" variant="quiet" disabled={state === "mutating"} aria-label={`Remove invalid upload ${record.originalName}`} onClick={requestRemoval}><Trash2 aria-hidden="true" size={14} />Remove invalid upload</ActionButton>}
+    {recovery.kind === "retry-delete" && <ActionButton type="button" variant="quiet" disabled={state === "mutating"} aria-label={`Retry delete ${record.originalName}`} onClick={requestRemoval}><RotateCcw aria-hidden="true" size={14} />Retry delete</ActionButton>}
+    {recovery.kind !== "remove-invalid" && recovery.kind !== "retry-delete" && <ActionButton type="button" variant="quiet" disabled={state === "mutating"} aria-label={`Remove ${record.originalName}`} onClick={requestRemoval}><Trash2 aria-hidden="true" size={14} />Remove</ActionButton>}
   </div>;
 }

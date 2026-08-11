@@ -65,8 +65,12 @@ export function IndividualDesignsLayoutPreview({ artwork, configuration, onPrefe
   return <aside className={panelClassName} aria-labelledby={readOnly ? "review-layout-preview-title" : "layout-preview-title"} data-testid="layout-preview">
     <p className="text-xs font-semibold text-text-secondary">Layout preview</p>
     <h2 id={readOnly ? "review-layout-preview-title" : "layout-preview-title"} className="mt-2 font-display text-3xl font-semibold text-text-primary">Your Gang Sheet</h2>
+    {loadingGeometry ? <LayoutGraphicPlaceholder message="Preparing artwork preview…" />
+      : selected.status === "success" ? <LayoutGraphic layout={selected} resources={resources} />
+        : <LayoutGraphicPlaceholder message="Your generated gang sheet will appear here when the artwork details are complete." />}
     <LayoutSummary layout={selected} />
-    <p className="mt-3 text-xs leading-5 text-text-muted">Shows placement, requested size, quantity, and spacing. Final print quality has not been reviewed yet.</p>
+
+    {!loadingGeometry && selected.status !== "success" && <LayoutDiagnostics layout={selected} />}
 
     {!readOnly ? <details className="group mt-5 border-y border-border py-1" data-testid="layout-options">
       <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring">
@@ -77,9 +81,7 @@ export function IndividualDesignsLayoutPreview({ artwork, configuration, onPrefe
       <LayoutComparison comparison={comparison} />
     </details> : <div className="mt-5 border-y border-border py-4"><p className="text-sm font-semibold text-text-primary">{modeLabel(preferences.mode)}</p><p className="mt-1 text-xs text-text-muted">{spacingLabel(spacing)} spacing</p><LayoutComparison comparison={comparison} /></div>}
 
-    {loadingGeometry ? <div className="mt-5 rounded-control border border-dashed border-border bg-background p-5 text-center text-xs text-text-muted" aria-live="polite">Preparing artwork preview…</div>
-      : selected.status === "success" ? <LayoutGraphic layout={selected} resources={resources} />
-        : <LayoutDiagnostics layout={selected} />}
+    <p className="mt-5 text-xs leading-5 text-text-muted">Shows placement, requested size, quantity, and spacing. Final print quality has not been reviewed yet.</p>
   </aside>;
 }
 
@@ -150,6 +152,10 @@ function LayoutDiagnostics({ layout }: { layout: GangSheetLayout }) {
     <div className="flex items-start gap-3"><FileWarning aria-hidden="true" size={18} className="mt-0.5 shrink-0 text-warning" /><div><p className="text-sm font-semibold text-text-primary">Could not generate the complete preview</p><p className="mt-1 text-xs leading-5 text-text-muted">Continue editing your artwork details. We haven’t calculated a sheet length yet.</p></div></div>
     <ul className="mt-3 space-y-2 text-xs leading-5 text-text-secondary">{layout.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}-${diagnostic.artworkId ?? index}-${diagnostic.variantId ?? index}`}><strong>{diagnostic.artworkName ? `${diagnostic.artworkName} — ${diagnostic.variantLabel}: ` : ""}</strong>{customerDiagnosticMessage(diagnostic)}</li>)}</ul>
   </div>;
+}
+
+function LayoutGraphicPlaceholder({ message }: { message: string }) {
+  return <div className="mt-5 flex min-h-72 items-center justify-center rounded-control border border-dashed border-border-strong bg-background p-6 text-center text-xs leading-5 text-text-muted" aria-live="polite" data-testid="gang-sheet-preview-placeholder"><div><LayoutTemplate aria-hidden="true" className="mx-auto mb-3 text-primary-action" size={24} /><p>{message}</p></div></div>;
 }
 
 function workingSpacing(preferences: WorkingLayoutPreferences) {

@@ -139,6 +139,13 @@ for (const viewport of viewports) {
     await expect(page.getByTestId("layout-preview")).toContainText("Most Cost Efficient");
     await expect(page.getByTestId("layout-options")).toHaveJSProperty("open", false);
     await expect(page.getByTestId("compact-artwork-uploader")).toBeVisible();
+    const previewOrder = await page.getByTestId("layout-preview").evaluate((panel) => {
+      const top = (selector: string) => panel.querySelector(selector)?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
+      return { heading: top("h2"), graphic: top('[data-testid="gang-sheet-graphic"]'), summary: top('[data-testid="layout-text-summary"]'), options: top('[data-testid="layout-options"]') };
+    });
+    expect(previewOrder.heading).toBeLessThan(previewOrder.graphic);
+    expect(previewOrder.graphic).toBeLessThan(previewOrder.summary);
+    expect(previewOrder.summary).toBeLessThan(previewOrder.options);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     await expect(page.locator("h1")).toHaveCount(1);
     await page.screenshot({ fullPage: true, path: `artifacts/visual-review/artwork-layout-${viewport.name}.png` });
@@ -150,8 +157,22 @@ test("desktop visual review captures the prominent empty artwork uploader", asyn
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/order/artwork");
   await expect(page.getByRole("heading", { name: "Add artwork" })).toBeVisible();
+  await expect(page.getByTestId("layout-preview")).toHaveCount(0);
+  const uploaderWidth = await page.getByTestId("empty-artwork-uploader").evaluate((element) => element.getBoundingClientRect().width);
+  const availableWidth = await page.locator("main").evaluate((element) => element.getBoundingClientRect().width);
+  expect(uploaderWidth / availableWidth).toBeGreaterThan(0.5);
+  expect(uploaderWidth / availableWidth).toBeLessThan(0.7);
   await expect(page.getByTestId("artwork-requirements")).toHaveJSProperty("open", false);
   await page.screenshot({ fullPage: true, path: "artifacts/visual-review/artwork-empty-desktop.png" });
+});
+
+test("empty print-ready workspace does not render a gang-sheet preview", async ({ page }) => {
+  await mockArtworkWorkspace(page, "gang-sheet", [], { route: "gang-sheet", sheets: [], notes: "" });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/order/artwork");
+  await expect(page.getByRole("heading", { name: "Add artwork" })).toBeVisible();
+  await expect(page.getByTestId("layout-preview")).toHaveCount(0);
+  await expect(page.getByText("Your Gang Sheets", { exact: true })).toHaveCount(0);
 });
 
 test("desktop visual review captures expanded and grouped layout options", async ({ page }) => {
@@ -183,6 +204,7 @@ test("desktop visual review captures honest unresolved geometry", async ({ page 
   await mockIndividualDraft(page, false, true);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/order/artwork");
+  await expect(page.getByTestId("gang-sheet-preview-placeholder")).toBeVisible();
   await expect(page.getByText("Could not generate the complete preview")).toBeVisible();
   await expect(page.getByTestId("layout-preview")).not.toContainText(/verified physical dimensions|Pixel dimensions/);
   await page.screenshot({ fullPage: true, path: "artifacts/visual-review/layout-unresolved-desktop.png" });
