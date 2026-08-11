@@ -5,18 +5,21 @@ import type { FieldValues, UseFormWatch } from "react-hook-form";
 import type { OrderRoute, WorkingOrderConfiguration } from "@/lib/order-draft/types";
 import { useOrderDraft } from "@/components/order/order-draft-provider";
 
+const acceptEverySnapshot = () => true;
+
 export function useWorkingConfiguration<TValues extends FieldValues & WorkingOrderConfiguration>(
   route: OrderRoute,
   watch: UseFormWatch<TValues>,
+  acceptsSnapshot: (values: unknown) => boolean = acceptEverySnapshot,
 ) {
   const saveWorkingConfiguration = useOrderDraft((state) => state.saveWorkingConfiguration);
 
   useEffect(() => {
     const subscription = watch((values) => {
-      if (values.route === route) {
+      if (values.route === route && acceptsSnapshot(values)) {
         saveWorkingConfiguration(values as WorkingOrderConfiguration);
       }
     });
     return () => subscription.unsubscribe();
-  }, [route, saveWorkingConfiguration, watch]);
+  }, [acceptsSnapshot, route, saveWorkingConfiguration, watch]);
 }

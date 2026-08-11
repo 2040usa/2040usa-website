@@ -101,6 +101,46 @@ async function configureFirstDesign(page: Page, options: { method?: "width" | "h
   }
 }
 
+async function configureDesignGroup(page: Page, name: string, options: { method: "width" | "height"; dimension: string; quantity: string; changes?: string }) {
+  const group = page.getByRole("group", { name });
+  await group.getByLabel("Sizing method").selectOption(options.method);
+  await group.getByLabel(options.method === "height" ? /Finished height/ : /Finished width/).fill(options.dimension);
+  await group.getByLabel("Quantity").fill(options.quantity);
+  if (options.changes) {
+    await group.getByLabel("I need artwork changes").check();
+    await group.getByLabel("Requested changes").fill(options.changes);
+  } else {
+    await group.getByLabel("Print as uploaded").check();
+  }
+}
+
+async function setupThreeConfiguredDesigns(page: Page, prefix: string) {
+  const names = { a: `${prefix}-a.png`, b: `${prefix}-b.png`, c: `${prefix}-c.png` };
+  const expectPersistedDesignCount = async (count: number) => {
+    await expect.poll(async () => page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()).then((body) => body.draft?.workingConfiguration?.designs?.length))).toBe(count);
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  };
+  await chooseRoute(page, "Individual Designs");
+  await uploadArtwork(page, png(names.a, 2, 1));
+  await expectPersistedDesignCount(1);
+  await uploadArtwork(page, png(names.b, 1, 2));
+  await expectPersistedDesignCount(2);
+  await uploadArtwork(page, png(names.c, 3, 2));
+  await expectPersistedDesignCount(3);
+  await configureDesignGroup(page, names.a, { method: "width", dimension: "8", quantity: "2" });
+  await configureDesignGroup(page, names.b, { method: "height", dimension: "6", quantity: "3" });
+  await configureDesignGroup(page, names.c, { method: "width", dimension: "9", quantity: "4", changes: "Keep the outline and remove the background." });
+  const designB = page.getByRole("group", { name: names.b });
+  await designB.getByRole("button", { name: "Add another size" }).click();
+  await designB.getByLabel("Sizing method").nth(1).selectOption("width");
+  await designB.getByLabel(/Finished width/).fill("4");
+  await designB.getByLabel("Quantity").nth(1).fill("5");
+  await expect(page.getByTestId("layout-placement")).toHaveCount(14);
+  await expect(page.getByTestId("selected-layout-length")).not.toHaveText("Pending");
+  await expect.poll(async () => page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()).then((body) => body.draft?.workingConfiguration?.designs?.length))).toBe(3);
+  return names;
+}
+
 test("homepage and Starting Point expose exactly two active routes", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Start with Print-Ready Gang Sheet" })).toBeVisible();
@@ -372,6 +412,151 @@ test("deletion prunes its artwork-linked working configuration", async ({ page }
   await expect(page.getByRole("group", { name: "delete-me.png" })).toHaveCount(0);
   await expect(page.getByTestId("layout-placement")).toHaveCount(7);
   await expect(page.getByTestId("selected-layout-length")).not.toHaveText(lengthBeforeRemoval ?? "");
+});
+
+test("removing the first of three configured designs preserves the exact surviving form and draft state", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const draftErrors: Array<{ method: string; status: number; code?: string; message?: string; designShape?: unknown }> = [];
+  page.on("response", async (response) => {
+    if (response.status() < 500 || !new URL(response.url()).pathname.startsWith("/api/order-drafts/")) return;
+    const body = await response.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
+    const requestBody = response.request().postDataJSON() as { workingConfiguration?: { designs?: Array<{ artworkId?: unknown; sizes?: Array<{ id?: unknown; method?: unknown; dimension?: unknown; quantity?: unknown }>; wantsChanges?: unknown; changeInstructions?: unknown }> } } | null;
+    draftErrors.push({
+      method: response.request().method(),
+      status: response.status(),
+      code: body?.error?.code,
+      message: body?.error?.message,
+      designShape: requestBody?.workingConfiguration?.designs?.map((design) => ({
+        hasArtworkId: typeof design.artworkId === "string",
+        sizes: design.sizes?.map((size) => ({ hasId: typeof size.id === "string", method: size.method, dimension: size.dimension, quantity: size.quantity })),
+        wantsChanges: design.wantsChanges,
+        hasChangeInstructions: typeof design.changeInstructions === "string",
+      })),
+    });
+  });
+  const names = await setupThreeConfiguredDesigns(page, "first-remove");
+  expect(draftErrors).toEqual([]);
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  const before = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json())) as { draft: { id: string; workingConfiguration: { designs: Array<{ artworkId: string }> } } };
+  const artworkSnapshot = await page.evaluate((draftId) => fetch(`/api/order-drafts/${draftId}/artwork`, { cache: "no-store" }).then((response) => response.json()), before.draft.id) as { artwork: Array<{ id: string; originalName: string }> };
+  const idsByName = new Map(artworkSnapshot.artwork.map((record) => [record.originalName, record.id]));
+  const patchPayloads: unknown[] = [];
+  let deletionStarted = false;
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === "DELETE" && path.startsWith("/api/artwork/")) deletionStarted = true;
+    if (deletionStarted && request.method() === "PATCH" && path === `/api/order-drafts/${before.draft.id}`) patchPayloads.push(request.postDataJSON());
+  });
+
+  const deletionResponsePromise = page.waitForResponse((response) => response.request().method() === "DELETE" && new URL(response.url()).pathname.startsWith("/api/artwork/"));
+  await page.getByRole("button", { name: `Remove ${names.a}` }).click();
+  const deletionResponse = await deletionResponsePromise;
+  expect(deletionResponse.ok()).toBe(true);
+  const deletionBody = await deletionResponse.json() as { draft: { workingConfiguration: { designs: Array<{ artworkId: string }> } } };
+  expect(deletionBody.draft.workingConfiguration.designs.map((design) => design.artworkId)).toEqual([idsByName.get(names.b), idsByName.get(names.c)]);
+
+  await expect(page.getByRole("group", { name: names.a })).toHaveCount(0);
+  const designB = page.getByRole("group", { name: names.b });
+  const designC = page.getByRole("group", { name: names.c });
+  await expect(designB).toBeVisible();
+  await expect(designC).toBeVisible();
+  await expect(page.getByLabel("Sizing method")).toHaveCount(3);
+  await expect(page.getByLabel("Quantity")).toHaveCount(3);
+  await page.getByLabel("Optional project notes").fill("Saved after removing the first design.");
+  await expect.poll(() => patchPayloads.length).toBeGreaterThan(0);
+  for (const payload of patchPayloads as Array<{ workingConfiguration?: { designs?: Array<{ artworkId?: string; sizes?: Array<{ id?: string; quantity?: string }> }> } }>) {
+    expect(payload.workingConfiguration?.designs).toHaveLength(2);
+    expect(payload.workingConfiguration?.designs?.map((design) => design.artworkId)).toEqual([idsByName.get(names.b), idsByName.get(names.c)]);
+    expect(payload.workingConfiguration?.designs?.every((design) => design.artworkId && design.sizes?.every((size) => size.id && size.quantity))).toBe(true);
+  }
+  await expect(designB.getByLabel("Sizing method").nth(0)).toHaveValue("height");
+  await expect(designB.getByLabel("Quantity").nth(0)).toHaveValue("3");
+  await expect(designB.getByLabel("Sizing method").nth(1)).toHaveValue("width");
+  await expect(designB.getByLabel("Quantity").nth(1)).toHaveValue("5");
+  await expect(designC.getByLabel("Quantity")).toHaveValue("4");
+  await expect(designC.getByLabel("I need artwork changes")).toBeChecked();
+  await expect(designC.getByLabel("Requested changes")).toHaveValue("Keep the outline and remove the background.");
+  await expect(page.getByTestId("layout-placement")).toHaveCount(12);
+  await expect(page.getByTestId("selected-layout-length")).not.toHaveText("Pending");
+  await expect(page.getByText("Could not generate the complete preview")).toHaveCount(0);
+  await expect(page.getByText("Unable to save", { exact: true })).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
+  expect(draftErrors).toEqual([]);
+  await page.reload();
+  await expect(page.getByRole("group", { name: names.b }).getByLabel("Quantity").nth(0)).toHaveValue("3");
+  await expect(page.getByRole("group", { name: names.b }).getByLabel("Quantity").nth(1)).toHaveValue("5");
+  await expect(page.getByRole("group", { name: names.c }).getByLabel("Requested changes")).toHaveValue("Keep the outline and remove the background.");
+  await page.waitForTimeout(100);
+  expect(draftErrors).toEqual([]);
+});
+
+for (const position of ["middle", "last"] as const) {
+  test(`removing the ${position} of three configured designs preserves the other artwork`, async ({ page }) => {
+    const draftErrors: Array<{ method: string; status: number; code?: string; message?: string }> = [];
+    page.on("response", async (response) => {
+      if (response.status() < 500 || !new URL(response.url()).pathname.startsWith("/api/order-drafts/")) return;
+      const body = await response.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
+      draftErrors.push({ method: response.request().method(), status: response.status(), code: body?.error?.code, message: body?.error?.message });
+    });
+    const names = await setupThreeConfiguredDesigns(page, `${position}-remove`);
+    expect(draftErrors).toEqual([]);
+    const removedName = position === "middle" ? names.b : names.c;
+    const survivors = position === "middle" ? [names.a, names.c] : [names.a, names.b];
+    const expectedPlacements = position === "middle" ? 6 : 10;
+
+    await page.getByRole("button", { name: `Remove ${removedName}` }).click();
+    await expect(page.getByRole("group", { name: removedName })).toHaveCount(0);
+    await expect(page.getByRole("group", { name: survivors[0] })).toBeVisible();
+    await expect(page.getByRole("group", { name: survivors[1] })).toBeVisible();
+    await expect(page.getByTestId("layout-placement")).toHaveCount(expectedPlacements);
+    await expect(page.getByTestId("selected-layout-length")).not.toHaveText("Pending");
+    await expect(page.getByText("Could not generate the complete preview")).toHaveCount(0);
+    await expect(page.getByText("Unable to save", { exact: true })).toHaveCount(0);
+    await expect.poll(async () => page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()).then((body) => body.draft?.workingConfiguration?.designs))).toHaveLength(2);
+
+    if (position === "middle") {
+      await expect(page.getByRole("group", { name: names.a }).getByLabel("Quantity")).toHaveValue("2");
+      await expect(page.getByRole("group", { name: names.c }).getByLabel("Quantity")).toHaveValue("4");
+      await expect(page.getByRole("group", { name: names.c }).getByLabel("Requested changes")).toHaveValue("Keep the outline and remove the background.");
+    } else {
+      await expect(page.getByRole("group", { name: names.b }).getByLabel("Quantity").nth(0)).toHaveValue("3");
+      await expect(page.getByRole("group", { name: names.b }).getByLabel("Quantity").nth(1)).toHaveValue("5");
+    }
+
+    await page.reload();
+    await expect(page.getByRole("group", { name: removedName })).toHaveCount(0);
+    await expect(page.getByRole("group", { name: survivors[0] })).toBeVisible();
+    await expect(page.getByRole("group", { name: survivors[1] })).toBeVisible();
+    await expect(page.getByTestId("layout-placement")).toHaveCount(expectedPlacements);
+    await page.waitForTimeout(100);
+    expect(draftErrors).toEqual([]);
+  });
+}
+
+test("sequentially removing the new first design reaches the canonical empty state", async ({ page }) => {
+  const names = await setupThreeConfiguredDesigns(page, "sequential-remove");
+
+  await page.getByRole("button", { name: `Remove ${names.a}` }).click();
+  await expect(page.getByRole("group", { name: names.a })).toHaveCount(0);
+  await expect(page.getByTestId("layout-placement")).toHaveCount(12);
+
+  await page.getByRole("button", { name: `Remove ${names.b}` }).click();
+  await expect(page.getByRole("group", { name: names.b })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: names.c }).getByLabel("Quantity")).toHaveValue("4");
+  await expect(page.getByTestId("layout-placement")).toHaveCount(4);
+
+  await page.getByRole("button", { name: `Remove ${names.c}` }).click();
+  await expect(page.getByRole("group", { name: names.c })).toHaveCount(0);
+  await expect(page.getByTestId("layout-preview")).toHaveCount(0);
+  await expect(page.getByTestId("empty-artwork-uploader")).toBeVisible();
+  await expect(page.getByText("Unable to save", { exact: true })).toHaveCount(0);
+  await expect.poll(async () => page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()).then((body) => body.draft?.workingConfiguration?.designs ?? []))).toEqual([]);
+
+  await page.reload();
+  await expect(page.getByTestId("layout-preview")).toHaveCount(0);
+  await expect(page.getByTestId("empty-artwork-uploader")).toBeVisible();
 });
 
 test("removing the final configured design leaves a durable empty artwork state", async ({ page }) => {

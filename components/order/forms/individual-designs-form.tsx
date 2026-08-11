@@ -1,11 +1,11 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { Controller, useFieldArray, useForm, useWatch, type Control, type Resolver, type UseFormRegister, type UseFormSetValue, type FieldErrors } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
-import { individualDesignsFormSchema, type IndividualDesignsFormValues } from "@/lib/order-draft/schemas";
+import { individualDesignsFormSchema, workingOrderConfigurationSchema, type IndividualDesignsFormValues } from "@/lib/order-draft/schemas";
 import { MAX_CHANGE_INSTRUCTIONS_LENGTH, MAX_DYNAMIC_ROWS, MAX_NOTES_LENGTH } from "@/lib/order-draft/constants";
 import type { CanonicalArtworkRecord } from "@/lib/artwork/types";
 import type { WorkingIndividualDesignConfiguration, WorkingIndividualDesignsConfiguration } from "@/lib/order-draft/types";
@@ -92,11 +92,20 @@ export function IndividualDesignsForm({ continueBlocked, blockedReason, addArtwo
   const saveConfiguration = useOrderDraft((state) => state.saveConfiguration);
   const { flush } = useOrderDraftPersistence();
   const initial = working ?? (completed ? toWorkingConfiguration(completed) : { route: "individual-designs" as const, designs: artwork.map((record) => newDesign(record.id)), layoutPreferences: defaultLayoutPreferences(), notes: "" });
-  const { control, register, handleSubmit, formState, watch, reset, getValues, setValue } = useForm<WorkingIndividualDesignsConfiguration, unknown, IndividualDesignsFormValues>({
+  const { control, register, handleSubmit, formState, watch, getValues, setValue } = useForm<WorkingIndividualDesignsConfiguration, unknown, IndividualDesignsFormValues>({
     resolver: zodResolver(individualDesignsFormSchema) as Resolver<WorkingIndividualDesignsConfiguration, unknown, IndividualDesignsFormValues>,
     defaultValues: initial,
   });
-  useWorkingConfiguration("individual-designs", watch);
+  const { fields: designFields, replace: replaceDesigns } = useFieldArray({ control, name: "designs", keyName: "fieldKey" });
+  const artworkById = useMemo(() => new Map(artwork.map((record) => [record.id, record])), [artwork]);
+  const acceptsWorkingSnapshot = useCallback((values: unknown) => {
+    const parsed = workingOrderConfigurationSchema.safeParse(values);
+    return parsed.success
+      && parsed.data.route === "individual-designs"
+      && parsed.data.designs.length === artwork.length
+      && parsed.data.designs.every((design, index) => design.artworkId === artwork[index]?.id);
+  }, [artwork]);
+  useWorkingConfiguration("individual-designs", watch, acceptsWorkingSnapshot);
 
   useEffect(() => {
     const current = getValues();
@@ -108,9 +117,9 @@ export function IndividualDesignsForm({ continueBlocked, blockedReason, addArtwo
       return replaced ? { ...replaced, artworkId: record.id } : newDesign(record.id);
     });
     if (next.length !== current.designs?.length || next.some((design, index) => design.artworkId !== current.designs?.[index]?.artworkId)) {
-      reset({ route: "individual-designs", designs: next, layoutPreferences: current.layoutPreferences ?? defaultLayoutPreferences(), notes: current.notes ?? "" }, { keepDirtyValues: true });
+      replaceDesigns(next);
     }
-  }, [artwork, getValues, reset]);
+  }, [artwork, getValues, replaceDesigns]);
 
   const previewConfiguration = useWatch({ control }) as WorkingIndividualDesignsConfiguration;
   const onSubmit = async (values: IndividualDesignsFormValues) => {
@@ -125,7 +134,10 @@ export function IndividualDesignsForm({ continueBlocked, blockedReason, addArtwo
     <div className="grid min-w-0 gap-8 xl:grid-cols-[minmax(0,3fr)_minmax(22rem,2fr)] xl:items-start">
       <div className="min-w-0">
         <div className="space-y-8">
-          {artwork.map((record, designIndex) => <DesignCard key={record.id} record={record} designIndex={designIndex} control={control} register={register} setValue={setValue} errors={formState.errors} />)}
+          {designFields.map((field, designIndex) => {
+            const record = artworkById.get(field.artworkId);
+            return record ? <DesignCard key={field.fieldKey} record={record} designIndex={designIndex} control={control} register={register} setValue={setValue} errors={formState.errors} /> : null;
+          })}
         </div>
         {addArtworkAction}
       </div>
