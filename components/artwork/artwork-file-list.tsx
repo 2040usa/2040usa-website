@@ -17,15 +17,15 @@ export function ArtworkFileList({ includeUploaded = true }: { includeUploaded?: 
       {visibleRecords.map((record) => {
         const recovery = classifyArtworkRecovery(record);
         const recoveryExplanation = recovery.kind === "restart-expired"
-          ? "This attempt expired. Reselect the exact file to create a new secure upload record and path."
+          ? "This upload expired. Reselect the same file to try again."
           : recovery.kind === "restart-missing"
-            ? "The prior object is missing. Reselect the exact file to restart with a new secure upload record and path."
+            ? "The uploaded file is no longer available. Reselect the same file to try again."
             : recovery.kind === "remove-invalid"
-              ? "The stored upload failed verification and cannot be overwritten. Remove it before selecting the file again."
+              ? "We couldn’t verify this upload. Remove it before selecting the file again."
               : recovery.kind === "retry-delete"
-                ? "Deletion is incomplete. Retry deletion before attempting another upload."
+                ? "Removal did not finish. Try removing the file again."
                 : recovery.kind === "resume" || recovery.kind === "retry"
-                  ? "Reselect this exact file to continue its unexpired secure upload record. The browser cannot restore file bytes automatically."
+                  ? "Reselect the same file to continue the upload."
                   : null;
         return <li key={record.id} className="flex min-w-0 flex-col gap-4 rounded-control border border-border bg-panel p-4 shadow-[var(--card-shadow)] sm:flex-row sm:items-center">
         <div className="min-w-0 flex-1"><ArtworkIdentity record={record} previewSize="sm" />{recoveryExplanation && <p className="mt-2 text-xs leading-5 text-text-muted">{recoveryExplanation}</p>}{record.failureCode && <p className="mt-2 text-xs text-error">Upload status: {record.failureCode.replaceAll("_", " ")}.</p>}</div>

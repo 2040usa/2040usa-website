@@ -57,6 +57,20 @@ async function mockIndividualDraft(page: Page, completed: boolean, includeOrigin
   await page.route(`**/api/order-drafts/${visualDraftId}`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ draft: { ...draft, version: 5 } }) }));
 }
 
+async function mockArtworkWorkspace(page: Page, routeName: "individual-designs" | "gang-sheet", artwork: Array<typeof visualArtwork>, workingConfiguration: unknown) {
+  const draft = {
+    id: visualDraftId, version: 4, status: "active", updatedAt: visualUpdatedAt, selectedRoute: routeName,
+    startingPointConfirmed: true, artworkAcknowledged: artwork.length > 0, workingConfiguration, configuration: null, lastCompletedStep: artwork.length > 0 ? 2 : 1,
+  };
+  const totalBytes = artwork.reduce((total, record) => total + record.declaredSizeBytes, 0);
+  const snapshot = { draft, artwork, readiness: { ready: artwork.length > 0, uploadedCount: artwork.length, activeCount: artwork.length, totalDeclaredBytes: totalBytes, totalVerifiedBytes: totalBytes } };
+  await page.route("**/api/order-drafts/current", (request) => request.fulfill({ contentType: "application/json", body: JSON.stringify({ draft }) }));
+  await page.route(`**/api/order-drafts/${visualDraftId}/artwork`, (request) => request.fulfill({ contentType: "application/json", body: JSON.stringify(snapshot) }));
+  await page.route(`**/api/order-drafts/${visualDraftId}/artwork/reconcile`, (request) => request.fulfill({ contentType: "application/json", body: JSON.stringify(snapshot) }));
+  await page.route("**/api/artwork/*/preview-url", (request) => request.fulfill({ contentType: "application/json", body: JSON.stringify({ url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", expiresIn: 60 }) }));
+  await page.route(`**/api/order-drafts/${visualDraftId}`, (request) => request.fulfill({ contentType: "application/json", body: JSON.stringify({ draft: { ...draft, version: 5 } }) }));
+}
+
 for (const viewport of viewports) {
   test(`${viewport.name} visual audit has no runtime or overflow failures`, async ({ page }) => {
     const consoleErrors: string[] = [];
@@ -119,13 +133,71 @@ for (const viewport of viewports) {
     await mockIndividualDraft(page, false, false);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/order/artwork");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Upload and configure your artwork.");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Artwork & Layout");
     await expect(page.getByRole("group", { name: /a-very-long-individual-design-filename/ })).toBeVisible();
     await expect(page.getByTestId("gang-sheet-graphic")).toBeVisible();
     await expect(page.getByTestId("layout-preview")).toContainText("Most Cost Efficient");
+    await expect(page.getByTestId("layout-options")).toHaveJSProperty("open", false);
+    await expect(page.getByTestId("compact-artwork-uploader")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     await expect(page.locator("h1")).toHaveCount(1);
     await page.screenshot({ fullPage: true, path: `artifacts/visual-review/artwork-layout-${viewport.name}.png` });
+  });
+}
+
+test("desktop visual review captures the prominent empty artwork uploader", async ({ page }) => {
+  await mockArtworkWorkspace(page, "individual-designs", [], { route: "individual-designs", designs: [], layoutPreferences: { mode: "efficient", spacingPreset: "standard", customSpacing: "" }, notes: "" });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/order/artwork");
+  await expect(page.getByRole("heading", { name: "Add artwork" })).toBeVisible();
+  await expect(page.getByTestId("artwork-requirements")).toHaveJSProperty("open", false);
+  await page.screenshot({ fullPage: true, path: "artifacts/visual-review/artwork-empty-desktop.png" });
+});
+
+test("desktop visual review captures expanded and grouped layout options", async ({ page }) => {
+  await mockIndividualDraft(page, false, false);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/order/artwork");
+  const options = page.getByTestId("layout-options");
+  await options.locator("summary").click();
+  await expect(options).toHaveJSProperty("open", true);
+  await page.screenshot({ fullPage: true, path: "artifacts/visual-review/layout-options-expanded-desktop.png" });
+  await page.getByLabel("Keep Designs Together").check();
+  await expect(page.getByTestId("gang-sheet-graphic").locator("svg")).toHaveAttribute("data-layout-mode", "grouped");
+  await page.screenshot({ fullPage: true, path: "artifacts/visual-review/layout-grouped-desktop.png" });
+});
+
+test("desktop visual review captures multiple distinct artwork designs", async ({ page }) => {
+  const secondArtwork = { ...visualArtwork, id: "00000000-0000-4000-8000-000000000103", originalName: "second-customer-design.png" };
+  await mockArtworkWorkspace(page, "individual-designs", [visualArtwork, secondArtwork], {
+    route: "individual-designs", layoutPreferences: { mode: "efficient", spacingPreset: "standard", customSpacing: "" }, notes: "",
+    designs: [visualArtwork, secondArtwork].map((record, index) => ({ artworkId: record.id, sizes: [{ id: `visual-multiple-${index}`, method: "width", dimension: index ? "6" : "8", quantity: index ? "4" : "6" }], wantsChanges: "no", changeInstructions: "" })),
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/order/artwork");
+  await expect(page.getByRole("group", { name: "second-customer-design.png" })).toBeVisible();
+  await page.screenshot({ fullPage: true, path: "artifacts/visual-review/artwork-multiple-desktop.png" });
+});
+
+test("desktop visual review captures honest unresolved geometry", async ({ page }) => {
+  await mockIndividualDraft(page, false, true);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/order/artwork");
+  await expect(page.getByText("Could not generate the complete preview")).toBeVisible();
+  await expect(page.getByTestId("layout-preview")).not.toContainText(/verified physical dimensions|Pixel dimensions/);
+  await page.screenshot({ fullPage: true, path: "artifacts/visual-review/layout-unresolved-desktop.png" });
+});
+
+for (const count of [1, 2]) {
+  test(`desktop visual review captures ${count} print-ready gang sheet${count === 1 ? "" : "s"}`, async ({ page }) => {
+    const sheets = Array.from({ length: count }, (_, index) => ({ ...visualArtwork, id: `00000000-0000-4000-8000-00000000010${index + 2}`, route: "gang-sheet", purpose: "gang-sheet-file", originalName: index ? "second-ready-gang-sheet.png" : "customer-ready-gang-sheet.png" }));
+    await mockArtworkWorkspace(page, "gang-sheet", sheets, { route: "gang-sheet", notes: "", sheets: sheets.map((record, index) => ({ artworkId: record.id, finishedWidth: "22", finishedLength: index ? "48" : "36", copies: index ? "2" : "1" })) });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/order/artwork");
+    await expect(page.getByText("Add your gang sheets and tell us the finished size and copies.")).toBeVisible();
+    await expect(page.getByTestId(/gang-sheet-preview-/)).toHaveCount(count);
+    await expect(page.getByText("Layout options", { exact: true })).toHaveCount(0);
+    await page.screenshot({ fullPage: true, path: `artifacts/visual-review/print-ready-${count}-desktop.png` });
   });
 }
 

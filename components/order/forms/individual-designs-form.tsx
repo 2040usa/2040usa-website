@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { Controller, useFieldArray, useForm, useWatch, type Control, type Resolver, type UseFormRegister, type UseFormSetValue, type FieldErrors } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
@@ -43,13 +43,13 @@ function SizeVariants({ designIndex, control, register, setValue, errors }: {
 }) {
   const { fields, append, remove } = useFieldArray({ control, name: `designs.${designIndex}.sizes`, keyName: "fieldKey" });
   const sizes = useWatch({ control, name: `designs.${designIndex}.sizes` });
-  return <div className="mt-5 space-y-3">
+  return <div className="mt-6 space-y-4">
     {fields.map((field, sizeIndex) => {
       const method = sizes?.[sizeIndex]?.method ?? "";
       const prefix = `designs.${designIndex}.sizes.${sizeIndex}` as const;
       const error = errors.designs?.[designIndex]?.sizes?.[sizeIndex];
-      return <fieldset key={field.fieldKey} className="rounded-control border border-border bg-background p-4">
-        <legend className="px-2 text-sm font-semibold text-text-primary">Requested size {sizeIndex + 1}</legend>
+      return <fieldset key={field.fieldKey} className="border-t border-border pt-4">
+        <legend className="pr-3 text-sm font-semibold text-text-primary">Size {sizeIndex + 1}</legend>
         <input type="hidden" {...register(`${prefix}.id`)} />
         <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_0.7fr_auto] lg:items-end">
           <div>
@@ -63,7 +63,7 @@ function SizeVariants({ designIndex, control, register, setValue, errors }: {
             <label htmlFor={`${prefix}-dimension`} className={labelClassName}>{method === "height" ? "Finished height" : "Finished width"} <span className="text-text-muted">(in)</span></label>
             <input id={`${prefix}-dimension`} type="number" step="any" inputMode="decimal" className={inputClassName} disabled={!method} aria-invalid={Boolean(error?.dimension)} aria-describedby={`${prefix}-dimension-error`} {...register(`${prefix}.dimension`)} />
             <FieldErrorMessage id={`${prefix}-dimension-error`} error={error?.dimension} />
-          </div> : <p className="text-xs leading-5 text-text-muted">The original physical size will be confirmed during artwork review. Pixel dimensions are not converted to inches.</p>}
+          </div> : <p className="text-xs leading-5 text-text-muted">We’ll confirm the original physical size during artwork review.</p>}
           <div>
             <label htmlFor={`${prefix}-quantity`} className={labelClassName}>Quantity</label>
             <input id={`${prefix}-quantity`} type="number" min="1" step="1" inputMode="numeric" className={inputClassName} aria-invalid={Boolean(error?.quantity)} aria-describedby={`${prefix}-quantity-error`} {...register(`${prefix}.quantity`)} />
@@ -71,14 +71,14 @@ function SizeVariants({ designIndex, control, register, setValue, errors }: {
           </div>
           {fields.length > 1 && <ActionButton type="button" variant="quiet" className="text-error" onClick={() => remove(sizeIndex)} aria-label={`Remove requested size ${sizeIndex + 1}`}><Trash2 aria-hidden size={14} /> Remove</ActionButton>}
         </div>
-        {(method === "width" || method === "height") && <p className="mt-3 text-xs text-text-muted">The layout preview keeps the other dimension proportional using raster aspect ratio only. Pixel dimensions are not treated as physical inches or DPI.</p>}
+        {(method === "width" || method === "height") && <p className="mt-3 text-xs text-text-muted">We’ll keep your artwork proportional.</p>}
       </fieldset>;
     })}
     <ActionButton type="button" variant="secondary" disabled={fields.length >= MAX_DYNAMIC_ROWS} onClick={() => append(newSize())}><Plus aria-hidden size={15} /> Add another size</ActionButton>
   </div>;
 }
 
-export function IndividualDesignsForm({ continueBlocked, blockedReason }: { continueBlocked: boolean; blockedReason: string }) {
+export function IndividualDesignsForm({ continueBlocked, blockedReason, addArtworkAction }: { continueBlocked: boolean; blockedReason: string; addArtworkAction?: ReactNode }) {
   const router = useRouter();
   const { records, acknowledge } = useArtwork();
   const artwork = useMemo(() => {
@@ -122,12 +122,12 @@ export function IndividualDesignsForm({ continueBlocked, blockedReason }: { cont
   return <form noValidate onSubmit={handleSubmit(onSubmit)}>
     <input type="hidden" {...register("route")} />
     <FormErrorSummary errors={formState.errors} submitCount={formState.submitCount} />
-    <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+    <div className="grid min-w-0 gap-8 xl:grid-cols-[minmax(0,3fr)_minmax(22rem,2fr)] xl:items-start">
       <div className="min-w-0">
-        <div className="space-y-5">
+        <div className="space-y-8">
           {artwork.map((record, designIndex) => <DesignCard key={record.id} record={record} designIndex={designIndex} control={control} register={register} setValue={setValue} errors={formState.errors} />)}
         </div>
-        <div className="mt-6"><label htmlFor="individual-notes" className={labelClassName}>Optional project notes</label><textarea id="individual-notes" rows={5} maxLength={MAX_NOTES_LENGTH} className={`${inputClassName} resize-y py-3`} {...register("notes")} /></div>
+        {addArtworkAction}
       </div>
       <IndividualDesignsLayoutPreview
         artwork={artwork}
@@ -136,6 +136,7 @@ export function IndividualDesignsForm({ continueBlocked, blockedReason }: { cont
         onPreferencesChange={(preferences) => setValue("layoutPreferences", preferences, { shouldDirty: true, shouldValidate: true })}
       />
     </div>
+    <div className="mt-8 border-t border-border pt-7"><label htmlFor="individual-notes" className={labelClassName}>Optional project notes</label><textarea id="individual-notes" rows={4} maxLength={MAX_NOTES_LENGTH} className={`${inputClassName} resize-y py-3`} {...register("notes")} /></div>
     {continueBlocked && <p className="mt-6 text-sm text-text-muted" aria-live="polite">{blockedReason}</p>}
     <StepActions backHref="/order/start" continueLabel="Continue to Review" isSubmitting={formState.isSubmitting || continueBlocked} />
   </form>;
@@ -147,18 +148,18 @@ function DesignCard({ record, designIndex, control, register, setValue, errors }
 }) {
   const wantsChanges = useWatch({ control, name: `designs.${designIndex}.wantsChanges` });
   const designError = errors.designs?.[designIndex];
-  return <fieldset className="min-w-0 rounded-control border border-border bg-panel p-4 shadow-[var(--card-shadow)] sm:p-5">
-    <legend className="max-w-full break-words px-2 font-display text-xl font-semibold text-text-primary">{record.originalName}</legend>
+  return <section role="group" aria-labelledby={`design-title-${record.id}`} className="min-w-0 border-t border-border bg-panel pt-7 first:border-t-0 first:pt-0">
     <input type="hidden" {...register(`designs.${designIndex}.artworkId`)} />
-    <div className="mb-5 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><ArtworkIdentity record={record} previewSize="sm" hideName /><ArtworkRecordActions record={record} /></div>
+    <ArtworkIdentity record={record} previewSize="hero" hideName showMetadata={false} className="flex-col items-stretch" />
+    <div className="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><h2 id={`design-title-${record.id}`} className="break-words font-display text-xl font-semibold text-text-primary">{record.originalName}</h2><ArtworkRecordActions record={record} /></div>
     <SizeVariants designIndex={designIndex} control={control} register={register} setValue={setValue} errors={errors} />
-    <fieldset className="mt-5 border-t border-border pt-5">
-      <legend className="text-sm font-semibold text-text-primary">Do you want us to make changes to this artwork?</legend>
-      <Controller control={control} name={`designs.${designIndex}.wantsChanges`} render={({ field }) => <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {[["no", "No, print it as uploaded"], ["yes", "Yes, I need changes"]].map(([value, label]) => <label key={value} className="flex min-h-11 items-center gap-3 rounded-control border border-border bg-background px-4 py-3 text-sm text-text-primary"><input type="radio" value={value} checked={field.value === value} onChange={() => { field.onChange(value); if (value === "no") setValue(`designs.${designIndex}.changeInstructions`, "", { shouldDirty: true }); }} className="size-4 accent-primary-action" />{label}</label>)}
+    <fieldset className="mt-6 border-t border-border pt-5">
+      <legend className="text-sm font-semibold text-text-primary">Artwork changes</legend>
+      <Controller control={control} name={`designs.${designIndex}.wantsChanges`} render={({ field }) => <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:gap-6">
+        {[["no", "Print as uploaded"], ["yes", "I need artwork changes"]].map(([value, label]) => <label key={value} className="flex min-h-11 items-center gap-3 text-sm text-text-primary"><input type="radio" value={value} checked={field.value === value} onChange={() => { field.onChange(value); if (value === "no") setValue(`designs.${designIndex}.changeInstructions`, "", { shouldDirty: true }); }} className="size-4 accent-primary-action" />{label}</label>)}
       </div>} />
       <FieldErrorMessage id={`design-${designIndex}-changes-error`} error={designError?.wantsChanges} />
       {wantsChanges === "yes" && <div className="mt-4"><label htmlFor={`design-${designIndex}-instructions`} className={labelClassName}>Requested changes</label><textarea id={`design-${designIndex}-instructions`} rows={4} maxLength={MAX_CHANGE_INSTRUCTIONS_LENGTH} className={`${inputClassName} resize-y py-3`} placeholder="Describe the change for our review. This does not promise feasibility or calculate a fee." aria-invalid={Boolean(designError?.changeInstructions)} aria-describedby={`design-${designIndex}-instructions-error`} {...register(`designs.${designIndex}.changeInstructions`)} /><FieldErrorMessage id={`design-${designIndex}-instructions-error`} error={designError?.changeInstructions} /></div>}
     </fieldset>
-  </fieldset>;
+  </section>;
 }

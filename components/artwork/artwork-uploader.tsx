@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ButtonHTMLAttri
 import Uppy from "@uppy/core";
 import Tus from "@uppy/tus";
 import { UppyContextProvider, useDropzone, useFileInput, useUppyState } from "@uppy/react";
-import { FileUp, Pause, Play, RotateCcw, Trash2 } from "lucide-react";
+import { FileUp, Pause, Play, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useArtwork } from "@/components/artwork/artwork-provider";
 import { LocalArtworkPreview } from "@/components/artwork/artwork-preview";
 import { useOrderDraft } from "@/components/order/order-draft-provider";
@@ -68,13 +68,13 @@ function createArtworkUppy(draftId: string, reportStage: (stage: string) => void
     withCredentials: false,
     allowedMetaFields: ["bucketName", "objectName", "contentType", "cacheControl", "artworkId"],
     onBeforeRequest: async (request) => {
-      reportStage("Checking the upload session");
+      reportStage("Preparing upload");
       const result = await supabase.auth.getSession();
       if (result.error || !result.data.session?.access_token) throw new Error("The upload session is unavailable. Retry without creating a new identity.");
       request.setHeader("Authorization", `Bearer ${result.data.session.access_token}`);
       request.setHeader("apikey", publicEnvironment.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
       request.setHeader("x-upsert", "false");
-      reportStage("Transferring securely");
+      reportStage("Uploading");
     },
   });
 }
@@ -92,7 +92,7 @@ export function ArtworkUploader({ draftId, onActivityChange }: { draftId: string
 
 function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage, onActivityChange }: { uppy: Uppy; draftId: string; uploadStage: string; setUploadStage: (stage: string) => void; onActivityChange?: (active: boolean) => void }) {
   const route = useOrderDraft((state) => state.selectedRoute);
-  const { records, readiness, error, recoveryTarget, selectRecoveryTarget, reserve, complete, fail, remove } = useArtwork();
+  const { records, error, recoveryTarget, selectRecoveryTarget, reserve, complete, fail, remove } = useArtwork();
   const files = useUppyState(uppy, (uppyState) => Object.values(uppyState.files));
   const [selectionError, setSelectionError] = useState("");
   const [reservationErrors, setReservationErrors] = useState<Record<string, string>>({});
@@ -127,7 +127,7 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage, o
       if (typeof artworkId === "string") void complete(artworkId).then(() => {
         if (uppy.getFile(file.id)) uppy.removeFile(file.id);
         setAnnouncement(`${file.name} upload completed.`);
-        setUploadStage("Verified and ready");
+        setUploadStage("Ready");
       }).catch(() => undefined);
     };
     const onError = (file: (typeof files)[number] | undefined) => {
@@ -156,7 +156,7 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage, o
     uploadRunRef.current = true;
     setSelectionError("");
     try {
-      setUploadStage("Preparing reservation");
+      setUploadStage("Preparing upload");
       for (const file of Object.values(uppy.getFiles())) {
         let currentMeta = metaFor(file);
         if (currentMeta.artworkId) continue;
@@ -205,7 +205,7 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage, o
       }
       const transferable = uppy.getFiles().filter((file) => typeof metaFor(file).artworkId === "string" && !file.progress.uploadStarted && !file.progress.uploadComplete);
       if (transferable.length === 0) { setUploadStage(uppy.getFiles().length ? "Waiting for retry" : "Idle"); return; }
-      setUploadStage("Starting resumable transfer");
+      setUploadStage("Starting upload");
       const result = await uppy.upload();
       const failed = result?.failed ?? [];
       if (failed.length) {
@@ -214,7 +214,7 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage, o
         throw new Error(message);
       }
       if (!(result?.successful ?? []).length && !failed.length) throw new Error("The resumable transfer did not start. Retry the selected file.");
-      setUploadStage("Transfer finished; verifying Storage");
+      setUploadStage("Checking file");
     } catch (cause) {
       setSelectionError(cause instanceof Error ? cause.message : "The upload could not begin.");
     } finally {
@@ -237,14 +237,24 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage, o
     else if (record) await remove(record);
   };
 
+  const hasUploadedArtwork = records.some((record) => record.status === "uploaded");
+  const compact = hasUploadedArtwork && files.length === 0 && !recoveryTarget && !selectionError && !error;
+  const addAnotherLabel = route === "gang-sheet" ? "Add another gang sheet" : "Add another design";
+
+  if (compact) return <section className="mt-6" aria-label="Add more artwork" data-testid="compact-artwork-uploader">
+    <input {...input.getInputProps()} className="sr-only" aria-label="Choose artwork files" />
+    <ActionButton {...input.getButtonProps()} variant="secondary"><Plus aria-hidden="true" size={16} /> {addAnotherLabel}</ActionButton>
+    <p className="sr-only" aria-live="polite">{announcement}</p>
+  </section>;
+
   return (
     <section className="mt-6 rounded-control border border-border bg-panel p-5 shadow-[var(--card-shadow)]" aria-labelledby="upload-artwork-title">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><p className="text-xs font-semibold text-text-secondary">Private resumable upload</p><h2 id="upload-artwork-title" className="mt-2 font-display text-2xl font-semibold text-text-primary">Add artwork files</h2></div>
-        <p className="text-xs text-text-muted">{records.filter((item) => item.status !== "deleting").length} / 20 files · {formatBytes(readiness.totalDeclaredBytes)} / 250 MiB</p>
+        <div><h2 id="upload-artwork-title" className="font-display text-2xl font-semibold text-text-primary">Add artwork</h2><p className="mt-2 text-sm leading-6 text-text-muted">Choose files or drop them below. Uploading starts automatically.</p></div>
+        <p className="text-xs text-text-muted">{records.filter((item) => item.status !== "deleting").length} / 20 files</p>
       </div>
-      <p className="mt-4 text-sm leading-6 text-text-muted">PNG, JPG, JPEG, WebP, PDF, AI, or PSD. Each file may be up to 50 MiB. Extension and declared type checks do not inspect file contents.</p>
-      {recoveryTarget && <div className="mt-4 rounded-control border border-primary-action/30 bg-raised p-4"><p className="text-sm font-semibold text-text-primary">{replacementTarget ? "Replacing uploaded artwork" : "Recovering exact upload record"}</p><p className="mt-2 text-sm text-text-muted">{replacementTarget ? "Choose the replacement file. The current private object remains until the new upload is verified." : <>Reselect <strong className="text-text-primary">{recoveryTarget.originalName}</strong>. Matching metadata alone never chooses a record automatically.</>}</p><button type="button" className="mt-3 text-sm font-semibold text-primary-action underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-focus-ring" onClick={() => selectRecoveryTarget(null)}>Cancel {replacementTarget ? "replacement" : "recovery"}</button></div>}
+      <p className="mt-3 text-sm leading-6 text-text-muted">PNG, JPG, JPEG, WebP, PDF, AI, or PSD. Up to 50 MiB per file.</p>
+      {recoveryTarget && <div className="mt-4 rounded-control border border-primary-action/30 bg-raised p-4"><p className="text-sm font-semibold text-text-primary">{replacementTarget ? "Replace artwork" : "Try this upload again"}</p><p className="mt-2 text-sm text-text-muted">{replacementTarget ? "Choose the replacement file. Your current artwork stays in place until the replacement is ready." : <>Reselect <strong className="text-text-primary">{recoveryTarget.originalName}</strong> to continue.</>}</p><button type="button" className="mt-3 text-sm font-semibold text-primary-action underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-focus-ring" onClick={() => selectRecoveryTarget(null)}>Cancel {replacementTarget ? "replacement" : "retry"}</button></div>}
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <input {...input.getInputProps()} className="sr-only" aria-label="Choose artwork files" />
         <ActionButton {...input.getButtonProps()}><FileUp aria-hidden="true" size={16} /> {replacementTarget ? `Choose replacement for ${replacementTarget.originalName}` : recoveryTarget ? `Reselect ${recoveryTarget.originalName}` : "Choose files"}</ActionButton>
@@ -274,7 +284,7 @@ function ArtworkUploaderContents({ uppy, draftId, uploadStage, setUploadStage, o
           </li>;
         })}
       </ul>}
-      <p className="mt-5 text-xs leading-5 text-text-muted">Valid selections reserve a private destination and begin uploading automatically. You can pause, resume, retry, or cancel each transfer.</p>
+      <p className="mt-5 text-xs leading-5 text-text-muted">Files begin uploading automatically. You can pause, resume, retry, or cancel each upload.</p>
     </section>
   );
 }

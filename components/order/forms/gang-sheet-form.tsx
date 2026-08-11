@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { useForm, useWatch, type FieldErrors, type Resolver, type UseFormRegister } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { gangSheetFormSchema, type GangSheetFormValues } from "@/lib/order-draft/schemas";
@@ -19,7 +19,7 @@ import { useWorkingConfiguration } from "@/components/order/forms/use-working-co
 import { StepActions } from "@/components/order/step-actions";
 import { GangSheetLayoutPreview } from "@/components/order/layout-preview";
 
-export function GangSheetForm({ continueBlocked, blockedReason }: { continueBlocked: boolean; blockedReason: string }) {
+export function GangSheetForm({ continueBlocked, blockedReason, addArtworkAction }: { continueBlocked: boolean; blockedReason: string; addArtworkAction?: ReactNode }) {
   const router = useRouter();
   const { records, acknowledge } = useArtwork();
   const artwork = useMemo(() => {
@@ -63,15 +63,16 @@ export function GangSheetForm({ continueBlocked, blockedReason }: { continueBloc
   return <form noValidate onSubmit={handleSubmit(onSubmit)}>
     <input type="hidden" {...register("route")} />
     <FormErrorSummary errors={formState.errors} submitCount={formState.submitCount} />
-    <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+    <div className="grid min-w-0 gap-8 xl:grid-cols-[minmax(0,3fr)_minmax(22rem,2fr)] xl:items-start">
       <div className="min-w-0">
-        <div className="space-y-5">
+        <div className="space-y-8">
           {artwork.map((record, index) => <GangSheetCard key={record.id} record={record} index={index} register={register} errors={formState.errors} />)}
         </div>
-        <div className="mt-6"><label htmlFor="gang-notes" className={labelClassName}>Optional project notes</label><textarea id="gang-notes" rows={5} maxLength={MAX_NOTES_LENGTH} aria-describedby="gang-notes-hint gang-notes-error" aria-invalid={Boolean(formState.errors.notes)} className={`${inputClassName} resize-y py-3`} {...register("notes")} /><span id="gang-notes-hint" className="mt-2 block text-xs text-text-muted">Up to {MAX_NOTES_LENGTH} characters. Do not include payment details.</span><FieldErrorMessage id="gang-notes-error" error={formState.errors.notes} /></div>
+        {addArtworkAction}
       </div>
       <GangSheetLayoutPreview artwork={artwork} configuration={previewConfiguration} />
     </div>
+    <div className="mt-8 border-t border-border pt-7"><label htmlFor="gang-notes" className={labelClassName}>Optional project notes</label><textarea id="gang-notes" rows={4} maxLength={MAX_NOTES_LENGTH} aria-describedby="gang-notes-hint gang-notes-error" aria-invalid={Boolean(formState.errors.notes)} className={`${inputClassName} resize-y py-3`} {...register("notes")} /><span id="gang-notes-hint" className="mt-2 block text-xs text-text-muted">Up to {MAX_NOTES_LENGTH} characters. Do not include payment details.</span><FieldErrorMessage id="gang-notes-error" error={formState.errors.notes} /></div>
     {continueBlocked && <p className="mt-6 text-sm text-text-muted" aria-live="polite">{blockedReason}</p>}
     <StepActions backHref="/order/start" continueLabel="Continue to Review" isSubmitting={formState.isSubmitting || continueBlocked} />
   </form>;
@@ -85,14 +86,14 @@ function GangSheetCard({ record, index, register, errors }: {
 }) {
   const error = errors.sheets?.[index];
   const prefix = `sheets.${index}` as const;
-  return <fieldset className="min-w-0 rounded-control border border-border bg-panel p-4 shadow-[var(--card-shadow)] sm:p-5">
-    <legend className="max-w-full break-words px-2 font-display text-xl font-semibold text-text-primary">{record.originalName}</legend>
+  return <section role="group" aria-labelledby={`gang-sheet-title-${record.id}`} className="min-w-0 border-t border-border bg-panel pt-7 first:border-t-0 first:pt-0">
     <input type="hidden" {...register(`${prefix}.artworkId`)} />
-    <div className="mb-5 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><ArtworkIdentity record={record} previewSize="sm" hideName /><ArtworkRecordActions record={record} /></div>
-    <div className="grid gap-4 sm:grid-cols-3">
+    <ArtworkIdentity record={record} previewSize="hero" hideName showMetadata={false} className="flex-col items-stretch" />
+    <div className="mt-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><h2 id={`gang-sheet-title-${record.id}`} className="break-words font-display text-xl font-semibold text-text-primary">{record.originalName}</h2><ArtworkRecordActions record={record} /></div>
+    <div className="mt-6 grid gap-4 sm:grid-cols-3">
       <div><label htmlFor={`${prefix}-width`} className={labelClassName}>Finished width <span className="text-text-muted">(in)</span></label><input id={`${prefix}-width`} type="number" step="any" inputMode="decimal" aria-describedby={`${prefix}-width-error`} aria-invalid={Boolean(error?.finishedWidth)} className={inputClassName} {...register(`${prefix}.finishedWidth`)} /><FieldErrorMessage id={`${prefix}-width-error`} error={error?.finishedWidth} /></div>
       <div><label htmlFor={`${prefix}-length`} className={labelClassName}>Finished length <span className="text-text-muted">(in)</span></label><input id={`${prefix}-length`} type="number" step="any" inputMode="decimal" aria-describedby={`${prefix}-length-error`} aria-invalid={Boolean(error?.finishedLength)} className={inputClassName} {...register(`${prefix}.finishedLength`)} /><FieldErrorMessage id={`${prefix}-length-error`} error={error?.finishedLength} /></div>
       <div><label htmlFor={`${prefix}-copies`} className={labelClassName}>Copies</label><input id={`${prefix}-copies`} type="number" min="1" step="1" inputMode="numeric" aria-describedby={`${prefix}-copies-error`} aria-invalid={Boolean(error?.copies)} className={inputClassName} {...register(`${prefix}.copies`)} /><FieldErrorMessage id={`${prefix}-copies-error`} error={error?.copies} /></div>
     </div>
-  </fieldset>;
+  </section>;
 }

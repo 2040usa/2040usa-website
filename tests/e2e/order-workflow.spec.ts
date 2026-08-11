@@ -69,7 +69,7 @@ async function chooseRoute(page: Page, name: "Print-Ready Gang Sheet" | "Individ
 async function uploadArtwork(page: Page, ...files: ReturnType<typeof png>[]) {
   await page.getByLabel("Choose artwork files").setInputFiles(files);
   await expect(page.getByRole("button", { name: "Upload selected files" })).toHaveCount(0);
-  await expect(page.getByText("Artwork ready for this draft")).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByTestId("compact-artwork-uploader")).toBeVisible({ timeout: 45_000 });
   for (const file of files) {
     await expect(page.getByRole("group", { name: file.name })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByAltText(`Private preview of ${file.name}; not a print approval`).first()).toBeVisible({ timeout: 15_000 });
@@ -78,8 +78,14 @@ async function uploadArtwork(page: Page, ...files: ReturnType<typeof png>[]) {
 
 async function expectCombinedWorkspace(page: Page) {
   await expect(page).toHaveURL(/\/order\/artwork$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Upload and configure your artwork.");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Artwork & Layout");
   await expect(page.getByTestId("layout-preview")).toBeVisible();
+}
+
+async function openLayoutOptions(page: Page) {
+  const options = page.getByTestId("layout-options");
+  if (!await options.evaluate((element) => (element as HTMLDetailsElement).open)) await options.locator("summary").click();
+  await expect(options).toHaveJSProperty("open", true);
 }
 
 async function configureFirstDesign(page: Page, options: { method?: "width" | "height" | "original"; dimension?: string; quantity?: string; changes?: string } = {}) {
@@ -88,10 +94,10 @@ async function configureFirstDesign(page: Page, options: { method?: "width" | "h
   if (method !== "original") await page.getByLabel(method === "height" ? /Finished height/ : /Finished width/).first().fill(options.dimension ?? "11.5");
   await page.getByLabel("Quantity").first().fill(options.quantity ?? "24");
   if (options.changes) {
-    await page.getByLabel("Yes, I need changes").first().check();
+    await page.getByLabel("I need artwork changes").first().check();
     await page.getByLabel("Requested changes").first().fill(options.changes);
   } else {
-    await page.getByLabel("No, print it as uploaded").first().check();
+    await page.getByLabel("Print as uploaded").first().check();
   }
 }
 
@@ -117,27 +123,33 @@ test("homepage and Starting Point expose exactly two active routes", async ({ pa
 
 test("route-card activation durably establishes each route before navigation", async ({ page }) => {
   await chooseRoute(page, "Print-Ready Gang Sheet");
-  await expect(page.getByText("Upload your arranged gang sheet", { exact: true })).toBeVisible();
+  await expect(page.getByText("Step 2 · Print-Ready Gang Sheet", { exact: true })).toBeVisible();
   let current = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json())) as { draft: { selectedRoute: string; startingPointConfirmed: boolean } };
   expect(current.draft).toMatchObject({ selectedRoute: "gang-sheet", startingPointConfirmed: true });
 
   await resetDraft(page);
   await chooseRoute(page, "Individual Designs");
-  await expect(page.getByText("Upload each individual design", { exact: true })).toBeVisible();
+  await expect(page.getByText("Step 2 · Individual Designs", { exact: true })).toBeVisible();
   current = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()));
   expect(current.draft).toMatchObject({ selectedRoute: "individual-designs", startingPointConfirmed: true });
 });
 
 test("legacy Project Details URL redirects to the canonical Artwork & Layout workspace", async ({ page }) => {
   await chooseRoute(page, "Individual Designs");
+  await expect(page.getByRole("heading", { name: "Add artwork" })).toBeVisible();
+  await expect(page.getByTestId("artwork-requirements")).toHaveJSProperty("open", false);
+  await page.getByTestId("artwork-requirements").locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("artwork-requirements")).toHaveJSProperty("open", true);
+  await expect(page.getByTestId("artwork-requirements")).toContainText("PNG, JPG, JPEG, WebP, PDF, AI, or PSD");
   await page.getByRole("button", { name: "Choose files" }).focus();
   await expect(page.getByRole("button", { name: "Choose files" })).toBeFocused();
   await page.getByRole("button", { name: "Drop files here or press Enter" }).focus();
   await expect(page.getByRole("button", { name: "Drop files here or press Enter" })).toBeFocused();
   await page.goto("/order/configure");
   await expect(page).toHaveURL(/\/order\/artwork$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Upload and configure your artwork.");
-  await expect(page.getByText("Project details", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Artwork & Layout");
+  await expect(page.getByText("Project details", { exact: true })).toHaveCount(0);
 });
 
 test("a failed route establishment stays retryable on Starting Point", async ({ page, runtimeMonitor }) => {
@@ -196,10 +208,22 @@ test("selection previews locally, auto-starts, and keeps reservation failure ret
   await expect(page.getByRole("button", { name: "Continue to Review" })).toBeDisabled();
   await page.unroute("**/api/order-drafts/*/artwork");
   await page.getByRole("button", { name: "Retry reservation for automatic-preview.png" }).click();
-  await expect(page.getByText("Artwork ready for this draft")).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByTestId("compact-artwork-uploader")).toBeVisible({ timeout: 45_000 });
   await expect(page.getByAltText("Private preview of automatic-preview.png; not a print approval").first()).toBeVisible({ timeout: 15_000 });
   await expectCombinedWorkspace(page);
   expect(await page.evaluate(() => (window as typeof window & { __revokedArtworkPreviewUrls?: string[] }).__revokedArtworkPreviewUrls?.length ?? 0)).toBeGreaterThan(0);
+});
+
+test("uploaded artwork collapses the large uploader while Add Another Design keeps automatic upload available", async ({ page }) => {
+  await chooseRoute(page, "Individual Designs");
+  await expect(page.getByRole("heading", { name: "Add artwork" })).toBeVisible();
+  await uploadArtwork(page, png("first-design.png"));
+  await expect(page.getByRole("heading", { name: "Add artwork" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add another design" })).toBeVisible();
+  await page.getByLabel("Choose artwork files").setInputFiles(png("second-design.png"));
+  await expect(page.getByText("2 designs uploaded")).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByRole("group", { name: "first-design.png" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "second-design.png" })).toBeVisible();
 });
 
 test("Individual Designs links every upload to multiple size variants and requested changes", async ({ page }) => {
@@ -216,10 +240,10 @@ test("Individual Designs links every upload to multiple size variants and reques
   await page.getByLabel("Quantity").nth(1).fill("6");
   await page.getByLabel("Sizing method").nth(2).selectOption("original");
   await page.getByLabel("Quantity").nth(2).fill("3");
-  await page.getByLabel("No, print it as uploaded").nth(1).check();
+  await page.getByLabel("Print as uploaded").nth(1).check();
 
-  await expect(page.getByTestId("layout-preview")).toContainText("Layout generation is incomplete");
-  await expect(page.getByTestId("layout-preview")).toContainText("Original Size has no verified physical dimensions");
+  await expect(page.getByTestId("layout-preview")).toContainText("Could not generate the complete preview");
+  await expect(page.getByTestId("layout-preview")).toContainText("Original Size needs confirmed physical dimensions");
   await expect(page.getByTestId("selected-layout-length")).toHaveText("Pending");
   await expect(page.getByTestId("layout-preview")).not.toContainText(/utilization|\$\d/i);
   await expect(page.getByTestId("layout-preview")).toContainText("33");
@@ -245,6 +269,9 @@ test("Individual Designs links every upload to multiple size variants and reques
 test("Individual Designs generates, compares, persists, and reviews deterministic layouts", async ({ page }) => {
   await chooseRoute(page, "Individual Designs");
   await uploadArtwork(page, png("wide-design.png", 2, 1), png("tall-design.png", 1, 2));
+  await expect(page.getByTestId("layout-options")).toHaveJSProperty("open", false);
+  await expect(page.getByTestId("layout-options")).toContainText('Most Cost Efficient · 0.25" spacing');
+  await openLayoutOptions(page);
   await expect(page.getByLabel("Most Cost Efficient")).toBeChecked();
   await expect(page.getByLabel(/Standard/)).toBeChecked();
 
@@ -252,7 +279,7 @@ test("Individual Designs generates, compares, persists, and reviews deterministi
   await page.getByLabel("Sizing method").nth(1).selectOption("height");
   await page.getByLabel(/Finished height/).nth(0).fill("8");
   await page.getByLabel("Quantity").nth(1).fill("4");
-  await page.getByLabel("No, print it as uploaded").nth(1).check();
+  await page.getByLabel("Print as uploaded").nth(1).check();
 
   await expect(page.getByTestId("gang-sheet-graphic")).toBeVisible();
   await expect(page.getByTestId("layout-placement")).toHaveCount(7);
@@ -273,7 +300,7 @@ test("Individual Designs generates, compares, persists, and reviews deterministi
 
   await page.getByLabel("Custom").check();
   await page.getByLabel(/Custom spacing/).fill("0.375");
-  await expect(page.getByTestId("layout-text-summary")).toContainText('0.375"');
+  await expect(page.getByTestId("layout-options")).toContainText('0.375" spacing');
   await page.getByLabel(/Extra/).check();
   await expect(page.getByTestId("selected-layout-length")).not.toHaveText(grouped ?? "");
   const extraLength = await page.getByTestId("selected-layout-length").textContent();
@@ -283,14 +310,15 @@ test("Individual Designs generates, compares, persists, and reviews deterministi
 
   await expect.poll(async () => page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()).then((body) => body.draft?.workingConfiguration?.layoutPreferences))).toEqual({ mode: "grouped", spacingPreset: "extra", customSpacing: "0.375" });
   await page.reload();
+  await openLayoutOptions(page);
   await expect(page.getByLabel("Keep Designs Together")).toBeChecked();
   await expect(page.getByLabel(/Extra/)).toBeChecked();
   await expect(page.getByTestId("gang-sheet-graphic")).toBeVisible();
 
   await page.getByRole("button", { name: "Continue to Review" }).click();
   await expect(page).toHaveURL(/\/order\/review$/);
-  await expect(page.getByTestId("layout-text-summary")).toContainText("Keep Designs Together");
-  await expect(page.getByTestId("layout-text-summary")).toContainText('0.5"');
+  await expect(page.getByTestId("layout-preview")).toContainText("Keep Designs Together");
+  await expect(page.getByTestId("layout-preview")).toContainText('0.5" spacing');
   await expect(page.getByTestId("selected-layout-length")).not.toHaveText("Pending");
   await expect(page.getByTestId("layout-preview")).not.toContainText(/\$\d|checkout|payment/i);
   const completed = await page.evaluate(() => fetch("/api/order-drafts/current", { cache: "no-store" }).then((response) => response.json()).then((body) => body.draft?.configuration));
@@ -318,7 +346,7 @@ test("configuration validation protects sizing exclusivity and change instructio
   await expect(page.locator('[id="designs.0.sizes.0-method-error"]')).toHaveText("Choose one sizing method.");
   await page.getByLabel("Sizing method").selectOption("original");
   await page.getByLabel("Quantity").fill("0");
-  await page.getByLabel("Yes, I need changes").check();
+  await page.getByLabel("I need artwork changes").check();
   await page.getByRole("button", { name: "Continue to Review" }).click();
   await expect(page.locator('[id="designs.0.sizes.0-quantity-error"]')).toContainText("whole-number quantity");
   await expect(page.locator('[id="design-0-instructions-error"]')).toHaveText("Describe the changes you want us to review.");
@@ -332,7 +360,7 @@ test("deletion prunes its artwork-linked working configuration", async ({ page }
   await page.getByLabel("Sizing method").nth(1).selectOption("height");
   await page.getByLabel(/Finished height/).fill("5");
   await page.getByLabel("Quantity").nth(1).fill("7");
-  await page.getByLabel("No, print it as uploaded").nth(1).check();
+  await page.getByLabel("Print as uploaded").nth(1).check();
   await expect(page.getByTestId("layout-placement")).toHaveCount(31);
   await page.getByRole("button", { name: "Remove delete-me.png" }).click();
   await expect(page.getByText("delete-me.png", { exact: true })).toHaveCount(0);
@@ -348,6 +376,7 @@ test("replacement uses a new canonical record and preserves design details", asy
   await uploadArtwork(page, png("old-design.png"));
   await expectCombinedWorkspace(page);
   await configureFirstDesign(page, { method: "height", dimension: "9", quantity: "12", changes: "Adjust the blue text." });
+  await openLayoutOptions(page);
   await page.getByLabel("Keep Designs Together").check();
   await page.getByRole("button", { name: "Continue to Review" }).click();
   await expect(page).toHaveURL(/\/order\/review$/);
@@ -359,6 +388,7 @@ test("replacement uses a new canonical record and preserves design details", asy
   await expect(page.getByLabel(/Finished height/)).toHaveValue("9");
   await expect(page.getByLabel("Quantity")).toHaveValue("12");
   await expect(page.getByLabel("Requested changes")).toHaveValue("Adjust the blue text.");
+  await openLayoutOptions(page);
   await expect(page.getByLabel("Keep Designs Together")).toBeChecked();
   await expect(page.getByTestId("layout-placement")).toHaveCount(12);
   await page.getByRole("button", { name: "Replace old-design.png" }).click();
